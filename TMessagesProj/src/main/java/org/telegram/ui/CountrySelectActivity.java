@@ -9,23 +9,37 @@
 package org.telegram.ui;
 
 import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.os.Build;
+import android.text.SpannableStringBuilder;
+import android.text.TextUtils;
+import android.text.style.ReplacementSpan;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.core.graphics.ColorUtils;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
-import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
 import org.telegram.ui.ActionBar.BaseFragment;
+import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Cells.DividerCell;
 import org.telegram.ui.Cells.LetterSectionCell;
 import org.telegram.ui.Cells.TextSettingsCell;
@@ -36,19 +50,23 @@ import org.telegram.ui.Components.RecyclerListView;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.text.Collator;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
-
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
 
 public class CountrySelectActivity extends BaseFragment {
 
     public interface CountrySelectActivityDelegate {
-        void didSelectCountry(String name, String shortName);
+        void didSelectCountry(Country country);
     }
 
     private RecyclerListView listView;
@@ -60,11 +78,24 @@ public class CountrySelectActivity extends BaseFragment {
     private boolean searching;
     private boolean needPhoneCode;
 
+    private boolean disableAnonymousNumbers;
+
     private CountrySelectActivityDelegate delegate;
+    private ArrayList<Country> existingCountries;
 
     public CountrySelectActivity(boolean phoneCode) {
+        this(phoneCode, null);
+    }
+    public CountrySelectActivity(boolean phoneCode, ArrayList<Country> existingCountries) {
         super();
+        if (existingCountries != null && !existingCountries.isEmpty()) {
+            this.existingCountries = new ArrayList<>(existingCountries);
+        }
         needPhoneCode = phoneCode;
+    }
+
+    public void setDisableAnonymousNumbers(boolean disableAnonymousNumbers) {
+        this.disableAnonymousNumbers = disableAnonymousNumbers;
     }
 
     @Override
@@ -78,10 +109,21 @@ public class CountrySelectActivity extends BaseFragment {
     }
 
     @Override
+    public boolean isLightStatusBar() {
+        int color = Theme.getColor(Theme.key_windowBackgroundWhite, null, true);
+        return ColorUtils.calculateLuminance(color) > 0.7f;
+    }
+
+    @Override
     public View createView(Context context) {
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
-        actionBar.setAllowOverlayTitle(true);
-        actionBar.setTitle(LocaleController.getString("ChooseCountry", R.string.ChooseCountry));
+        actionBar.setAllowOverlayTitle(false);
+        actionBar.setTitle(LocaleController.getString(R.string.ChooseCountry));
+
+        actionBar.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        actionBar.setItemsColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText), false);
+        actionBar.setItemsBackgroundColor(Theme.getColor(Theme.key_actionBarWhiteSelector), false);
+        actionBar.setTitleColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
 
         actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
             @Override
@@ -111,18 +153,30 @@ public class CountrySelectActivity extends BaseFragment {
             @Override
             public void onTextChanged(EditText editText) {
                 String text = editText.getText().toString();
+                if (TextUtils.isEmpty(text)) {
+                    searchListViewAdapter.search(null);
+                    searchWas = false;
+                    listView.setAdapter(listViewAdapter);
+                    listView.setFastScrollVisible(true);
+                    return;
+                }
+
                 searchListViewAdapter.search(text);
                 if (text.length() != 0) {
                     searchWas = true;
                 }
             }
         });
-        item.setSearchFieldHint(LocaleController.getString("Search", R.string.Search));
+        item.setSearchFieldHint(LocaleController.getString(R.string.Search));
+
+        actionBar.setSearchTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText), true);
+        actionBar.setSearchTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText), false);
+        actionBar.setSearchCursorColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
 
         searching = false;
         searchWas = false;
 
-        listViewAdapter = new CountryAdapter(context);
+        listViewAdapter = new CountryAdapter(context, existingCountries, disableAnonymousNumbers);
         searchListViewAdapter = new CountrySearchAdapter(context, listViewAdapter.getCountries());
 
         fragmentView = new FrameLayout(context);
@@ -131,14 +185,15 @@ public class CountrySelectActivity extends BaseFragment {
         emptyView = new EmptyTextProgressView(context);
         emptyView.showTextView();
         emptyView.setShowAtCenter(true);
-        emptyView.setText(LocaleController.getString("NoResult", R.string.NoResult));
+        emptyView.setText(LocaleController.getString(R.string.NoResult));
         frameLayout.addView(emptyView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
         listView = new RecyclerListView(context);
-        listView.setSectionsType(1);
+        listView.setSectionsType(RecyclerListView.SECTIONS_TYPE_FAST_SCROLL_ONLY);
         listView.setEmptyView(emptyView);
         listView.setVerticalScrollBarEnabled(false);
-        listView.setFastScrollEnabled();
+        listView.setFastScrollEnabled(RecyclerListView.FastScroll.LETTER_TYPE);
+        listView.setFastScrollVisible(true);
         listView.setLayoutManager(new LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false));
         listView.setAdapter(listViewAdapter);
         listView.setVerticalScrollbarPosition(LocaleController.isRTL ? RecyclerListView.SCROLLBAR_POSITION_LEFT : RecyclerListView.SCROLLBAR_POSITION_RIGHT);
@@ -161,7 +216,7 @@ public class CountrySelectActivity extends BaseFragment {
             }
             finishFragment();
             if (country != null && delegate != null) {
-                delegate.didSelectCountry(country.name, country.shortname);
+                delegate.didSelectCountry(country);
             }
         });
 
@@ -191,29 +246,37 @@ public class CountrySelectActivity extends BaseFragment {
 
     public static class Country {
         public String name;
+        public String defaultName;
         public String code;
         public String shortname;
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Country that = (Country) o;
+            return Objects.equals(name, that.name) && Objects.equals(code, that.code);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(name, code);
+        }
     }
 
     public class CountryAdapter extends RecyclerListView.SectionsAdapter {
+        private final static int TYPE_COUNTRY = 0, TYPE_DIVIDER = 1;
 
         private Context mContext;
         private HashMap<String, ArrayList<Country>> countries = new HashMap<>();
         private ArrayList<String> sortedCountries = new ArrayList<>();
 
-        public CountryAdapter(Context context) {
+        public CountryAdapter(Context context, ArrayList<Country> exisitingCountries, boolean disableAnonymousNumbers) {
             mContext = context;
 
-            try {
-                InputStream stream = ApplicationLoader.applicationContext.getResources().getAssets().open("countries.txt");
-                BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    String[] args = line.split(";");
-                    Country c = new Country();
-                    c.name = args[2];
-                    c.code = args[0];
-                    c.shortname = args[1];
+            if (exisitingCountries != null) {
+                for (int i = 0; i < exisitingCountries.size(); i++) {
+                    Country c = exisitingCountries.get(i);
                     String n = c.name.substring(0, 1).toUpperCase();
                     ArrayList<Country> arr = countries.get(n);
                     if (arr == null) {
@@ -223,16 +286,46 @@ public class CountrySelectActivity extends BaseFragment {
                     }
                     arr.add(c);
                 }
-                reader.close();
-                stream.close();
-            } catch (Exception e) {
-                FileLog.e(e);
+            } else {
+                try {
+                    InputStream stream = ApplicationLoader.applicationContext.getResources().getAssets().open("countries.txt");
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        String[] args = line.split(";");
+                        Country c = new Country();
+                        c.name = args[2];
+                        c.code = args[0];
+                        c.shortname = args[1];
+                        if (c.shortname.equals("FT") && disableAnonymousNumbers) {
+                            continue;
+                        }
+                        String n = c.name.substring(0, 1).toUpperCase();
+                        ArrayList<Country> arr = countries.get(n);
+                        if (arr == null) {
+                            arr = new ArrayList<>();
+                            countries.put(n, arr);
+                            sortedCountries.add(n);
+                        }
+                        arr.add(c);
+                    }
+                    reader.close();
+                    stream.close();
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
             }
-
-            Collections.sort(sortedCountries, String::compareTo);
+            Comparator<String> comparator;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                Collator collator = Collator.getInstance(LocaleController.getInstance().getCurrentLocale() != null ? LocaleController.getInstance().getCurrentLocale() : Locale.getDefault());
+                comparator = collator::compare;
+            } else {
+                comparator = String::compareTo;
+            }
+            Collections.sort(sortedCountries, comparator);
 
             for (ArrayList<Country> arr : countries.values()) {
-                Collections.sort(arr, (country, country2) -> country.name.compareTo(country2.name));
+                Collections.sort(arr, (country, country2) -> comparator.compare(country.name, country2.name));
             }
         }
 
@@ -274,26 +367,20 @@ public class CountrySelectActivity extends BaseFragment {
 
         @Override
         public View getSectionHeaderView(int section, View view) {
-            if (view == null) {
-                view = new LetterSectionCell(mContext);
-                ((LetterSectionCell) view).setCellHeight(AndroidUtilities.dp(48));
-            }
-            ((LetterSectionCell) view).setLetter(sortedCountries.get(section).toUpperCase());
-            return view;
+            return null;
         }
 
         @Override
         public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
             View view;
             switch (viewType) {
-                case 0:
-                    view = new TextSettingsCell(mContext);
-                    view.setPadding(AndroidUtilities.dp(LocaleController.isRTL ? 16 : 54), 0, AndroidUtilities.dp(LocaleController.isRTL ? 54 : 16), 0);
+                case TYPE_COUNTRY:
+                    view = createSettingsCell(mContext);
                     break;
-                case 1:
+                case TYPE_DIVIDER:
                 default:
                     view = new DividerCell(mContext);
-                    view.setPadding(AndroidUtilities.dp(LocaleController.isRTL ? 24 : 72), AndroidUtilities.dp(8), AndroidUtilities.dp(LocaleController.isRTL ? 72 : 24), AndroidUtilities.dp(8));
+                    view.setPadding(AndroidUtilities.dp(24), AndroidUtilities.dp(8), AndroidUtilities.dp(24), AndroidUtilities.dp(8));
                     break;
             }
             return new RecyclerListView.Holder(view);
@@ -301,17 +388,18 @@ public class CountrySelectActivity extends BaseFragment {
 
         @Override
         public void onBindViewHolder(int section, int position, RecyclerView.ViewHolder holder) {
-            if (holder.getItemViewType() == 0) {
+            if (holder.getItemViewType() == TYPE_COUNTRY) {
                 ArrayList<Country> arr = countries.get(sortedCountries.get(section));
                 Country c = arr.get(position);
-                ((TextSettingsCell) holder.itemView).setTextAndValue(c.name, needPhoneCode ? "+" + c.code : null, false);
+                TextSettingsCell settingsCell = (TextSettingsCell) holder.itemView;
+                settingsCell.setTextAndValue(Emoji.replaceEmoji(getCountryNameWithFlag(c), settingsCell.getTextView().getPaint().getFontMetricsInt(), false), needPhoneCode ? "+" + c.code : null, false);
             }
         }
 
         @Override
         public int getItemViewType(int section, int position) {
             ArrayList<Country> arr = countries.get(sortedCountries.get(section));
-            return position < arr.size() ? 0 : 1;
+            return position < arr.size() ? TYPE_COUNTRY : TYPE_DIVIDER;
         }
 
         @Override
@@ -324,8 +412,9 @@ public class CountrySelectActivity extends BaseFragment {
         }
 
         @Override
-        public int getPositionForScrollProgress(float progress) {
-            return (int) (getItemCount() * progress);
+        public void getPositionForScrollProgress(RecyclerListView listView, float progress, int[] position) {
+            position[0] = (int) (getItemCount() * progress);
+            position[1] = 0;
         }
     }
 
@@ -334,11 +423,16 @@ public class CountrySelectActivity extends BaseFragment {
         private Context mContext;
         private Timer searchTimer;
         private ArrayList<Country> searchResult;
-        private HashMap<String, ArrayList<Country>> countries;
+        private List<Country> countryList = new ArrayList<>();
 
         public CountrySearchAdapter(Context context, HashMap<String, ArrayList<Country>> countries) {
             mContext = context;
-            this.countries = countries;
+
+            for (List<Country> list : countries.values()) {
+                for (Country country : list) {
+                    countryList.add(country);
+                }
+            }
         }
 
         public void search(final String query) {
@@ -370,24 +464,30 @@ public class CountrySelectActivity extends BaseFragment {
 
         private void processSearch(final String query) {
             Utilities.searchQueue.postRunnable(() -> {
-
-                String q = query.trim().toLowerCase();
+                final String q = query.trim().toLowerCase();
                 if (q.length() == 0) {
                     updateSearchResults(new ArrayList<>());
                     return;
                 }
-                ArrayList<Country> resultArray = new ArrayList<>();
-
-                String n = query.substring(0, 1);
-                ArrayList<Country> arr = countries.get(n.toUpperCase());
-                if (arr != null) {
-                    for (Country c : arr) {
-                        if (c.name.toLowerCase().startsWith(query)) {
-                            resultArray.add(c);
-                        }
+                final String tq = AndroidUtilities.translitSafe(q);
+                final ArrayList<Country> resultArray = new ArrayList<>();
+                for (Country country : countryList) {
+                    final String a = (country.name == null ? "" : country.name).toLowerCase();
+                    final String at = AndroidUtilities.translitSafe(country.name).toLowerCase();
+                    final String b = (country.defaultName == null ? "" : country.defaultName).toLowerCase();
+                    final String bt = AndroidUtilities.translitSafe(country.defaultName).toLowerCase();
+                    final String code = (country.code == null ? "" : country.code);
+                    final String plusCode = TextUtils.isEmpty(code) ? "" : "+" + code;
+                    if (
+                        a.startsWith(q) || a.contains(" " + q) ||
+                        at.startsWith(tq) || at.contains(" " + tq) ||
+                        b.startsWith(q) || b.contains(" " + q) ||
+                        bt.startsWith(tq) || bt.contains(" " + tq) ||
+                        code.startsWith(q) || plusCode.startsWith(q)
+                    ) {
+                        resultArray.add(country);
                     }
                 }
-
                 updateSearchResults(resultArray);
             });
         }
@@ -420,7 +520,7 @@ public class CountrySelectActivity extends BaseFragment {
         }
 
         public Country getItem(int i) {
-            if (i < 0 || i >= searchResult.size()) {
+            if (searchResult == null || i < 0 || i >= searchResult.size()) {
                 return null;
             }
             return searchResult.get(i);
@@ -428,19 +528,62 @@ public class CountrySelectActivity extends BaseFragment {
 
         @Override
         public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
-            return new RecyclerListView.Holder(new TextSettingsCell(mContext));
+            return new RecyclerListView.Holder(createSettingsCell(mContext));
         }
 
         @Override
         public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
             Country c = searchResult.get(position);
-            ((TextSettingsCell) holder.itemView).setTextAndValue(c.name, needPhoneCode ? "+" + c.code : null, position != searchResult.size() - 1);
+            TextSettingsCell settingsCell = (TextSettingsCell) holder.itemView;
+            settingsCell.setTextAndValue(Emoji.replaceEmoji(getCountryNameWithFlag(c), settingsCell.getTextView().getPaint().getFontMetricsInt(), false), needPhoneCode ? "+" + c.code : null, false);
         }
 
         @Override
         public int getItemViewType(int i) {
             return 0;
         }
+    }
+
+    private static TextSettingsCell createSettingsCell(Context context) {
+        TextSettingsCell view = new TextSettingsCell(context);
+        view.setPadding(AndroidUtilities.dp(LocaleController.isRTL ? 16 : 12), 0, AndroidUtilities.dp(LocaleController.isRTL ? 12 : 16), 0);
+        view.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            private NotificationCenter.NotificationCenterDelegate listener = (id, account, args) -> {
+                if (id == NotificationCenter.emojiLoaded) {
+                    view.getTextView().invalidate();
+                }
+            };
+
+            @Override
+            public void onViewAttachedToWindow(View v) {
+                NotificationCenter.getGlobalInstance().addObserver(listener, NotificationCenter.emojiLoaded);
+            }
+
+            @Override
+            public void onViewDetachedFromWindow(View v) {
+                NotificationCenter.getGlobalInstance().removeObserver(listener, NotificationCenter.emojiLoaded);
+            }
+        });
+        return view;
+    }
+
+    private static CharSequence getCountryNameWithFlag(Country c) {
+        SpannableStringBuilder sb = new SpannableStringBuilder();
+        String flag = LocaleController.getLanguageFlag(c.shortname);
+        if (flag != null) {
+            sb.append(flag).append(" ");
+            sb.setSpan(new ReplacementSpan() {
+                @Override
+                public int getSize(@NonNull Paint paint, CharSequence text, int start, int end, @Nullable Paint.FontMetricsInt fm) {
+                    return AndroidUtilities.dp(16);
+                }
+
+                @Override
+                public void draw(@NonNull Canvas canvas, CharSequence text, int start, int end, float x, int top, int y, int bottom, @NonNull Paint paint) {}
+            }, flag.length(), flag.length() + 1, 0);
+        }
+        sb.append(c.name);
+        return sb;
     }
 
     @Override

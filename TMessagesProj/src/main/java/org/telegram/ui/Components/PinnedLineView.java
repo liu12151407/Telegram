@@ -12,8 +12,6 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
 import android.graphics.Shader;
-import android.graphics.drawable.Drawable;
-import android.graphics.drawable.GradientDrawable;
 import android.view.View;
 
 import androidx.core.graphics.ColorUtils;
@@ -49,9 +47,11 @@ public class PinnedLineView extends View {
     Paint selectedPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private int nextPosition = -1;
     private int color;
+    private final Theme.ResourcesProvider resourcesProvider;
 
-    public PinnedLineView(Context context) {
+    public PinnedLineView(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
+        this.resourcesProvider = resourcesProvider;
 
         paint.setStyle(Paint.Style.FILL);
         paint.setStrokeCap(Paint.Cap.ROUND);
@@ -73,9 +73,9 @@ public class PinnedLineView extends View {
     }
 
     public void updateColors() {
-        color = Theme.getColor(Theme.key_chat_topPanelLine);
+        color = getThemedColor(Theme.key_chat_topPanelLine);
         paint.setColor(ColorUtils.setAlphaComponent(color, (int) ((Color.alpha(color) / 255f) * 112)));
-        selectedPaint.setColor(Theme.getColor(Theme.key_chat_topPanelLine));
+        selectedPaint.setColor(color);
     }
 
     private void selectPosition(int position) {
@@ -280,5 +280,9 @@ public class PinnedLineView extends View {
                 selectPosition(position);
             }
         }
+    }
+
+    private int getThemedColor(int key) {
+        return Theme.getColor(key, resourcesProvider);
     }
 }

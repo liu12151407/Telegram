@@ -68,25 +68,19 @@ public class FeaturedStickerSetInfoCell extends FrameLayout {
     private int urlSearchLength;
 
     float unreadProgress;
+    private final Theme.ResourcesProvider resourcesProvider;
 
-    public FeaturedStickerSetInfoCell(Context context, int left) {
-        this(context, left, false);
-    }
-
-    public FeaturedStickerSetInfoCell(Context context, int left, boolean supportRtl) {
-        this(context, left, supportRtl, true);
-    }
-
-    public FeaturedStickerSetInfoCell(Context context, int left, boolean supportRtl, boolean canAddRemove) {
+    public FeaturedStickerSetInfoCell(Context context, int left, boolean supportRtl, boolean canAddRemove, Theme.ResourcesProvider resourcesProvider) {
         super(context);
         this.canAddRemove = canAddRemove;
+        this.resourcesProvider = resourcesProvider;
 
         FrameLayout.LayoutParams lp;
 
         nameTextView = new TextView(context);
-        nameTextView.setTextColor(Theme.getColor(Theme.key_chat_emojiPanelTrendingTitle));
+        nameTextView.setTextColor(getThemedColor(Theme.key_chat_emojiPanelTrendingTitle));
         nameTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 17);
-        nameTextView.setTypeface(AndroidUtilities.getTypeface("fonts/rmedium.ttf"));
+        nameTextView.setTypeface(AndroidUtilities.bold());
         nameTextView.setEllipsize(TextUtils.TruncateAt.END);
         nameTextView.setSingleLine(true);
         if (supportRtl) {
@@ -97,7 +91,7 @@ public class FeaturedStickerSetInfoCell extends FrameLayout {
         addView(nameTextView, lp);
 
         infoTextView = new TextView(context);
-        infoTextView.setTextColor(Theme.getColor(Theme.key_chat_emojiPanelTrendingDescription));
+        infoTextView.setTextColor(getThemedColor(Theme.key_chat_emojiPanelTrendingDescription));
         infoTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
         infoTextView.setEllipsize(TextUtils.TruncateAt.END);
         infoTextView.setSingleLine(true);
@@ -110,8 +104,8 @@ public class FeaturedStickerSetInfoCell extends FrameLayout {
 
         if (canAddRemove) {
             addButton = new ProgressButton(context);
-            addButton.setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText));
-            addButton.setText(LocaleController.getString("Add", R.string.Add));
+            addButton.setTextColor(getThemedColor(Theme.key_featuredStickers_buttonText));
+            addButton.setText(LocaleController.getString(R.string.Add));
             if (supportRtl) {
                 lp = LayoutHelper.createFrameRelatively(LayoutHelper.WRAP_CONTENT, 28, Gravity.TOP | Gravity.END, 0, 16, 14, 0);
             } else {
@@ -121,10 +115,10 @@ public class FeaturedStickerSetInfoCell extends FrameLayout {
 
             delButton = new TextView(context);
             delButton.setGravity(Gravity.CENTER);
-            delButton.setTextColor(Theme.getColor(Theme.key_featuredStickers_removeButtonText));
+            delButton.setTextColor(getThemedColor(Theme.key_featuredStickers_removeButtonText));
             delButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
-            delButton.setTypeface(AndroidUtilities.getTypeface("fonts/rmedium.ttf"));
-            delButton.setText(LocaleController.getString("StickersRemove", R.string.StickersRemove));
+            delButton.setTypeface(AndroidUtilities.bold());
+            delButton.setText(LocaleController.getString(R.string.StickersRemove));
             if (supportRtl) {
                 lp = LayoutHelper.createFrameRelatively(LayoutHelper.WRAP_CONTENT, 28, Gravity.TOP | Gravity.END, 0, 16, 14, 0);
             } else {
@@ -199,7 +193,11 @@ public class FeaturedStickerSetInfoCell extends FrameLayout {
         } else {
             nameTextView.setText(stickerSet.set.title);
         }
-        infoTextView.setText(LocaleController.formatPluralString("Stickers", stickerSet.set.count));
+        if (stickerSet.set.emojis) {
+            infoTextView.setText(LocaleController.formatPluralString("EmojiCount", stickerSet.set.count));
+        } else {
+            infoTextView.setText(LocaleController.formatPluralString("Stickers", stickerSet.set.count));
+        }
         isUnread = unread;
         if (canAddRemove) {
             if (hasOnClick) {
@@ -263,7 +261,7 @@ public class FeaturedStickerSetInfoCell extends FrameLayout {
         if (stickerSetNameSearchLength != 0) {
             SpannableStringBuilder builder = new SpannableStringBuilder(set.set.title);
             try {
-                builder.setSpan(new ForegroundColorSpan(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4)), stickerSetNameSearchIndex, stickerSetNameSearchIndex + stickerSetNameSearchLength, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                builder.setSpan(new ForegroundColorSpan(getThemedColor(Theme.key_windowBackgroundWhiteBlueText4)), stickerSetNameSearchIndex, stickerSetNameSearchIndex + stickerSetNameSearchLength, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             } catch (Exception ignore) {
             }
             nameTextView.setText(builder);
@@ -280,8 +278,8 @@ public class FeaturedStickerSetInfoCell extends FrameLayout {
         if (url != null) {
             SpannableStringBuilder builder = new SpannableStringBuilder(url);
             try {
-                builder.setSpan(new ColorSpanUnderline(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4)), 0, urlSearchLength, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                builder.setSpan(new ColorSpanUnderline(Theme.getColor(Theme.key_chat_emojiPanelTrendingDescription)), urlSearchLength, url.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                builder.setSpan(new ColorSpanUnderline(getThemedColor(Theme.key_windowBackgroundWhiteBlueText4)), 0, urlSearchLength, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                builder.setSpan(new ColorSpanUnderline(getThemedColor(Theme.key_chat_emojiPanelTrendingDescription)), urlSearchLength, url.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             } catch (Exception ignore) {
             }
             infoTextView.setText(builder);
@@ -322,18 +320,18 @@ public class FeaturedStickerSetInfoCell extends FrameLayout {
                     invalidate();
                 }
             }
-            paint.setColor(Theme.getColor(Theme.key_featuredStickers_unread));
+            paint.setColor(getThemedColor(Theme.key_featuredStickers_unread));
             canvas.drawCircle(nameTextView.getRight() + AndroidUtilities.dp(12), AndroidUtilities.dp(20), AndroidUtilities.dp(4) * unreadProgress, paint);
         }
         if (needDivider) {
-            canvas.drawLine(0, 0, getWidth(), 0, Theme.dividerPaint);
+            canvas.drawLine(0, 0, getWidth(), 0, Theme.getThemePaint(Theme.key_paint_divider, resourcesProvider));
         }
     }
 
     public void updateColors() {
         if (canAddRemove) {
-            addButton.setProgressColor(Theme.getColor(Theme.key_featuredStickers_buttonProgress));
-            addButton.setBackgroundRoundRect(Theme.getColor(Theme.key_featuredStickers_addButton), Theme.getColor(Theme.key_featuredStickers_addButtonPressed));
+            addButton.setProgressColor(getThemedColor(Theme.key_featuredStickers_buttonProgress));
+            addButton.setBackgroundRoundRect(getThemedColor(Theme.key_featuredStickers_addButton), getThemedColor(Theme.key_featuredStickers_addButtonPressed));
         }
         updateStickerSetNameSearchSpan();
         updateUrlSearchSpan();
@@ -351,5 +349,9 @@ public class FeaturedStickerSetInfoCell extends FrameLayout {
         descriptions.add(new ThemeDescription(null, 0, null, null, null, delegate, Theme.key_featuredStickers_addButtonPressed));
         descriptions.add(new ThemeDescription(null, 0, null, null, null, delegate, Theme.key_windowBackgroundWhiteBlueText4));
         descriptions.add(new ThemeDescription(null, 0, null, null, null, delegate, Theme.key_chat_emojiPanelTrendingDescription));
+    }
+
+    private int getThemedColor(int key) {
+        return Theme.getColor(key, resourcesProvider);
     }
 }

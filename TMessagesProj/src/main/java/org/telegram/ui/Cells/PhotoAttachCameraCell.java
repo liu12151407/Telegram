@@ -14,6 +14,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.drawable.Drawable;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
@@ -28,12 +29,14 @@ import java.io.File;
 @SuppressLint("NewApi")
 public class PhotoAttachCameraCell extends FrameLayout {
 
+    private final Theme.ResourcesProvider resourcesProvider;
     private ImageView imageView;
     private ImageView backgroundView;
     private int itemSize;
 
-    public PhotoAttachCameraCell(Context context) {
+    public PhotoAttachCameraCell(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
+        this.resourcesProvider = resourcesProvider;
 
         backgroundView = new ImageView(context);
         backgroundView.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -71,7 +74,7 @@ public class PhotoAttachCameraCell extends FrameLayout {
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogCameraIcon), PorterDuff.Mode.MULTIPLY));
+        imageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_dialogCameraIcon), PorterDuff.Mode.MULTIPLY));
     }
 
     public void updateBitmap() {
@@ -87,5 +90,13 @@ public class PhotoAttachCameraCell extends FrameLayout {
         } else {
             backgroundView.setImageResource(R.drawable.icplaceholder);
         }
+    }
+
+    public Drawable getDrawable() {
+        return backgroundView.getDrawable();
+    }
+
+    protected int getThemedColor(int key) {
+        return Theme.getColor(key, resourcesProvider);
     }
 }

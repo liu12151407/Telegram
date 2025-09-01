@@ -35,8 +35,8 @@ public class TrendingStickersAlert extends BottomSheet {
 
     private int scrollOffsetY;
 
-    public TrendingStickersAlert(@NonNull Context context, BaseFragment parentFragment, TrendingStickersLayout trendingStickersLayout) {
-        super(context, true);
+    public TrendingStickersAlert(@NonNull Context context, BaseFragment parentFragment, TrendingStickersLayout trendingStickersLayout, Theme.ResourcesProvider resourcesProvider) {
+        super(context, true, resourcesProvider);
 
         alertContainerView = new AlertContainerView(context);
         alertContainerView.addView(trendingStickersLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
@@ -230,7 +230,7 @@ public class TrendingStickersAlert extends BottomSheet {
             // mutable top corners
             if (fraction > 0f && fraction < 1f) {
                 final float radius = AndroidUtilities.dp(12) * fraction;
-                shapeDrawable.setColor(Theme.getColor(Theme.key_dialogBackground));
+                shapeDrawable.setColor(getThemedColor(Theme.key_dialogBackground));
                 radii[0] = radii[1] = radii[2] = radii[3] = radius;
                 shapeDrawable.setCornerRadii(radii);
                 shapeDrawable.setBounds(backgroundPaddingLeft, scrollOffsetY + offset, getWidth() - backgroundPaddingLeft, scrollOffsetY + offset + AndroidUtilities.dp(24));
@@ -240,11 +240,32 @@ public class TrendingStickersAlert extends BottomSheet {
             canvas.restore();
         }
 
+        private boolean statusBarOpen;
+        private void updateLightStatusBar(boolean open) {
+            if (statusBarOpen != open) {
+                statusBarOpen = open;
+                boolean openBgLight = AndroidUtilities.computePerceivedBrightness(getThemedColor(Theme.key_dialogBackground)) > .721f;
+                boolean closedBgLight = AndroidUtilities.computePerceivedBrightness(Theme.blendOver(getThemedColor(Theme.key_actionBarDefault), 0x33000000)) > .721f;
+                boolean isLight = open ? openBgLight : closedBgLight;
+                AndroidUtilities.setLightStatusBar(getWindow(), isLight);
+            }
+        }
+
         @Override
         protected void dispatchDraw(Canvas canvas) {
-            super.dispatchDraw(canvas);
 
             final float fraction = getFraction();
+
+            // status bar
+            setStatusBarVisible(fraction == 0f && Build.VERSION.SDK_INT >= 21 && !isDismissed(), true);
+            updateLightStatusBar(statusBarAlpha > .5f);
+            if (statusBarAlpha > 0f) {
+                paint.setColor(getThemedColor(Theme.key_dialogBackground));
+                int bottom = (int) Math.max(0, scrollOffsetY + (topOffset * (1f - getFraction())) + AndroidUtilities.dp(24) + (layout.getTranslationY() + ((Build.VERSION.SDK_INT >= 21 ? AndroidUtilities.statusBarHeight : 0) - topOffset)));
+                canvas.drawRect(backgroundPaddingLeft, AndroidUtilities.lerp(bottom, -AndroidUtilities.statusBarHeight, statusBarAlpha), getMeasuredWidth() - backgroundPaddingLeft, bottom, paint);
+            }
+
+            super.dispatchDraw(canvas);
 
             canvas.save();
             canvas.translate(0, layout.getTranslationY() + (Build.VERSION.SDK_INT >= 21 ? AndroidUtilities.statusBarHeight : 0) - topOffset);
@@ -254,20 +275,12 @@ public class TrendingStickersAlert extends BottomSheet {
             final int h = AndroidUtilities.dp(4);
             final int offset = (int) (h * 2f * (1f - fraction));
             shapeDrawable.setCornerRadius(AndroidUtilities.dp(2));
-            final int sheetScrollUpColor = Theme.getColor(Theme.key_sheet_scrollUp);
+            final int sheetScrollUpColor = getThemedColor(Theme.key_sheet_scrollUp);
             shapeDrawable.setColor(ColorUtils.setAlphaComponent(sheetScrollUpColor, (int) (Color.alpha(sheetScrollUpColor) * fraction)));
             shapeDrawable.setBounds((getWidth() - w) / 2, scrollOffsetY + AndroidUtilities.dp(10) + offset, (getWidth() + w) / 2, scrollOffsetY + AndroidUtilities.dp(10) + offset + h);
             shapeDrawable.draw(canvas);
 
             canvas.restore();
-
-            // status bar
-            setStatusBarVisible(fraction == 0f && Build.VERSION.SDK_INT >= 21 && !isDismissed(), true);
-            if (statusBarAlpha > 0f) {
-                final int color = Theme.getColor(Theme.key_dialogBackground);
-                paint.setColor(Color.argb((int) (0xff * statusBarAlpha), (int) (Color.red(color) * 0.8f), (int) (Color.green(color) * 0.8f), (int) (Color.blue(color) * 0.8f)));
-                canvas.drawRect(backgroundPaddingLeft, 0, getMeasuredWidth() - backgroundPaddingLeft, AndroidUtilities.statusBarHeight, paint);
-            }
         }
 
         @Override

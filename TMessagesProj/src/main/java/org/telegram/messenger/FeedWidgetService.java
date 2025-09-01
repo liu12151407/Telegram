@@ -14,6 +14,8 @@ import android.view.View;
 import android.widget.RemoteViews;
 import android.widget.RemoteViewsService;
 
+import androidx.core.content.FileProvider;
+
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 
@@ -21,8 +23,6 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
-
-import androidx.core.content.FileProvider;
 
 public class FeedWidgetService extends RemoteViewsService {
     @Override
@@ -35,7 +35,6 @@ class FeedRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory, N
 
     private ArrayList<MessageObject> messages = new ArrayList<>();
     private Context mContext;
-    private int appWidgetId;
     private long dialogId;
     private int classGuid;
     private AccountInstance accountInstance;
@@ -43,7 +42,7 @@ class FeedRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory, N
 
     public FeedRemoteViewsFactory(Context context, Intent intent) {
         mContext = context;
-        appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
+        int appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
         SharedPreferences preferences = context.getSharedPreferences("shortcut_widget", Activity.MODE_PRIVATE);
         int accountId = preferences.getInt("account" + appWidgetId, -1);
         if (accountId >= 0) {
@@ -79,7 +78,7 @@ class FeedRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory, N
         String name;
 
         RemoteViews rv = new RemoteViews(mContext.getPackageName(), R.layout.feed_widget_item);
-        if (messageObject.type == 0) {
+        if (messageObject.type == MessageObject.TYPE_TEXT) {
             rv.setTextViewText(R.id.feed_widget_item_text, messageObject.messageText);
             rv.setViewVisibility(R.id.feed_widget_item_text, View.VISIBLE);
         } else {
@@ -95,10 +94,10 @@ class FeedRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory, N
             rv.setViewVisibility(R.id.feed_widget_item_image, View.GONE);
         } else {
             TLRPC.PhotoSize size = FileLoader.getClosestPhotoSizeWithSize(messageObject.photoThumbs, AndroidUtilities.getPhotoSize());
-            File f = FileLoader.getPathToAttach(size);
+            File f = FileLoader.getInstance(UserConfig.selectedAccount).getPathToAttach(size);
             if (f.exists()) {
                 rv.setViewVisibility(R.id.feed_widget_item_image, View.VISIBLE);
-                Uri uri = FileProvider.getUriForFile(mContext, BuildConfig.APPLICATION_ID + ".provider", f);
+                Uri uri = FileProvider.getUriForFile(mContext, ApplicationLoader.getApplicationId() + ".provider", f);
                 grantUriAccessToWidget(mContext, uri);
                 rv.setImageViewUri(R.id.feed_widget_item_image, uri);
             } else {
@@ -107,7 +106,7 @@ class FeedRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory, N
         }
 
         Bundle extras = new Bundle();
-        extras.putInt("chatId", (int) -messageObject.getDialogId());
+        extras.putLong("chatId", -messageObject.getDialogId());
         extras.putInt("message_id", messageObject.getId());
         extras.putInt("currentAccount", accountInstance.getCurrentAccount());
 
@@ -144,7 +143,7 @@ class FeedRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory, N
             if (classGuid == 0) {
                 classGuid = ConnectionsManager.generateClassGuid();
             }
-            accountInstance.getMessagesController().loadMessages(dialogId, 0, false, 20, 0, 0, true, 0, classGuid, 0, 0, true, 0, 0, 0, 1);
+            accountInstance.getMessagesController().loadMessages(dialogId, 0, false, 20, 0, 0, true, 0, classGuid, 0, 0, 0, 0, 0, 1, false);
         });
         try {
             countDownLatch.await();

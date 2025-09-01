@@ -10,6 +10,7 @@ import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
+import android.util.SparseIntArray;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
@@ -20,7 +21,6 @@ import org.telegram.messenger.SvgHelper;
 import org.telegram.ui.ActionBar.Theme;
 
 import java.io.File;
-import java.util.HashMap;
 
 public class ThemePreviewDrawable extends BitmapDrawable {
 
@@ -42,8 +42,8 @@ public class ThemePreviewDrawable extends BitmapDrawable {
         Bitmap bitmap = Bitmaps.createBitmap(560, 678, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
 
-        HashMap<String, Integer> baseColors = Theme.getThemeFileValues(null, themeDocument.baseTheme.assetName, null);
-        HashMap<String, Integer> colors = new HashMap<>(baseColors);
+        SparseIntArray baseColors = Theme.getThemeFileValues(null, themeDocument.baseTheme.assetName, null);
+        SparseIntArray colors = baseColors.clone();
         themeDocument.accent.fillAccentColors(baseColors, colors);
 
         int actionBarColor = Theme.getPreviewColor(colors, Theme.key_actionBarDefault);
@@ -53,7 +53,6 @@ public class ThemePreviewDrawable extends BitmapDrawable {
         int messageInColor = Theme.getPreviewColor(colors, Theme.key_chat_inBubble);
 
         int messageOutColor = Theme.getPreviewColor(colors, Theme.key_chat_outBubble);
-        Integer messageOutGradientColor = colors.get(Theme.key_chat_outBubbleGradient);
         Integer backgroundColor = colors.get(Theme.key_chat_wallpaper);
         Integer gradientToColor1 = colors.get(Theme.key_chat_wallpaper_gradient_to1);
         Integer gradientToColor2 = colors.get(Theme.key_chat_wallpaper_gradient_to2);
@@ -77,7 +76,7 @@ public class ThemePreviewDrawable extends BitmapDrawable {
         for (int a = 0; a < 2; a++) {
             messageDrawable[a] = new Theme.MessageDrawable(Theme.MessageDrawable.TYPE_PREVIEW, a == 1, false) {
                 @Override
-                protected int getColor(String key) {
+                protected int getColor(int key) {
                     Integer color = colors.get(key);
                     if (color == null) {
                         return Theme.getColor(key);
@@ -86,7 +85,7 @@ public class ThemePreviewDrawable extends BitmapDrawable {
                 }
 
                 @Override
-                protected Integer getCurrentColor(String key) {
+                protected int getCurrentColor(int key) {
                     return colors.get(key);
                 }
             };
@@ -95,27 +94,31 @@ public class ThemePreviewDrawable extends BitmapDrawable {
 
         boolean hasBackground = false;
         if (backgroundColor != null) {
-            Drawable wallpaperDrawable;
+            Drawable wallpaperDrawable = null;
+            MotionBackgroundDrawable motionBackgroundDrawable = null;
             int patternColor;
             if (gradientToColor1 == null) {
                 wallpaperDrawable = new ColorDrawable(backgroundColor);
                 patternColor = AndroidUtilities.getPatternColor(backgroundColor);
             } else {
                 if (gradientToColor2 != 0) {
-                    wallpaperDrawable = new MotionBackgroundDrawable(backgroundColor, gradientToColor1, gradientToColor2, gradientToColor3, true);
+                    motionBackgroundDrawable = new MotionBackgroundDrawable(backgroundColor, gradientToColor1, gradientToColor2, gradientToColor3, true);
                 } else {
                     final int[] gradientColors = {backgroundColor, gradientToColor1};
                     wallpaperDrawable = BackgroundGradientDrawable.createDitheredGradientBitmapDrawable(gradientRotation, gradientColors, bitmap.getWidth(), bitmap.getHeight() - 120);
                 }
                 patternColor = AndroidUtilities.getPatternColor(AndroidUtilities.getAverageColor(backgroundColor, gradientToColor1));
             }
-            wallpaperDrawable.setBounds(0, 120, bitmap.getWidth(), bitmap.getHeight() - 120);
-            wallpaperDrawable.draw(canvas);
+            if (wallpaperDrawable != null) {
+                wallpaperDrawable.setBounds(0, 120, bitmap.getWidth(), bitmap.getHeight() - 120);
+                wallpaperDrawable.draw(canvas);
+            }
 
+            Bitmap patternBitmap = null;
             if (pattern != null) {
-                Bitmap patternBitmap;
+                int W = 560, H = 678;
                 if ("application/x-tgwallpattern".equals(themeDocument.mime_type)) {
-                    patternBitmap = SvgHelper.getBitmap(pattern, 560, 678, false);
+                    patternBitmap = SvgHelper.getBitmap(pattern, W, H, false);
                 } else {
                     BitmapFactory.Options opts = new BitmapFactory.Options();
                     opts.inSampleSize = 1;
@@ -124,8 +127,8 @@ public class ThemePreviewDrawable extends BitmapDrawable {
                     float photoW = opts.outWidth;
                     float photoH = opts.outHeight;
                     float scaleFactor;
-                    int w_filter = 560;
-                    int h_filter = 678;
+                    int w_filter = W;
+                    int h_filter = H;
                     if (w_filter >= h_filter && photoW > photoH) {
                         scaleFactor = Math.max(photoW / w_filter, photoH / h_filter);
                     } else {
@@ -147,22 +150,33 @@ public class ThemePreviewDrawable extends BitmapDrawable {
                     patternBitmap = BitmapFactory.decodeFile(pattern.getAbsolutePath(), opts);
                 }
                 if (patternBitmap != null) {
-                    Paint backgroundPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
-                    if (themeDocument.accent.patternIntensity >= 0) {
-                        backgroundPaint.setColorFilter(new PorterDuffColorFilter(patternColor, PorterDuff.Mode.SRC_IN));
+                    if (motionBackgroundDrawable != null) {
+                        motionBackgroundDrawable.setPatternBitmap((int) (themeDocument.accent.patternIntensity * 100), patternBitmap);
+                        motionBackgroundDrawable.setBounds(0, 120, bitmap.getWidth(), bitmap.getHeight() - 120);
+                        motionBackgroundDrawable.draw(canvas);
+                    } else {
+                        Paint backgroundPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+                        if (themeDocument.accent.patternIntensity >= 0) {
+                            backgroundPaint.setColorFilter(new PorterDuffColorFilter(patternColor, PorterDuff.Mode.SRC_IN));
+                        }
+                        backgroundPaint.setAlpha(255);
+                        float scale = Math.max((float) W / patternBitmap.getWidth(), (float) H / patternBitmap.getHeight());
+                        int w = (int) (patternBitmap.getWidth() * scale);
+                        int h = (int) (patternBitmap.getHeight() * scale);
+                        int x = (W - w) / 2;
+                        int y = (H - h) / 2;
+                        canvas.save();
+                        canvas.translate(x, y);
+                        canvas.scale(scale, scale);
+                        canvas.drawBitmap(patternBitmap, 0, 0, backgroundPaint);
+                        canvas.restore();
                     }
-                    backgroundPaint.setAlpha((int) (255 * Math.abs(themeDocument.accent.patternIntensity)));
-                    float scale = Math.max(560.0f / patternBitmap.getWidth(), 678.0f / patternBitmap.getHeight());
-                    int w = (int) (patternBitmap.getWidth() * scale);
-                    int h = (int) (patternBitmap.getHeight() * scale);
-                    int x = (560 - w) / 2;
-                    int y = (678 - h) / 2;
-                    canvas.save();
-                    canvas.translate(x, y);
-                    canvas.scale(scale, scale);
-                    canvas.drawBitmap(patternBitmap, 0, 0, backgroundPaint);
-                    canvas.restore();
                 }
+            }
+
+            if (patternBitmap == null && motionBackgroundDrawable != null) {
+                motionBackgroundDrawable.setBounds(0, 120, bitmap.getWidth(), bitmap.getHeight() - 120);
+                motionBackgroundDrawable.draw(canvas);
             }
 
             hasBackground = true;
@@ -190,15 +204,15 @@ public class ThemePreviewDrawable extends BitmapDrawable {
         }
 
         messageDrawable[1].setBounds(161, 216, bitmap.getWidth() - 20, 216 + 92);
-        messageDrawable[1].setTop(0, 522, false, false);
+        messageDrawable[1].setTop(0, 560, 522, false, false);
         messageDrawable[1].draw(canvas);
 
         messageDrawable[1].setBounds(161, 430, bitmap.getWidth() - 20, 430 + 92);
-        messageDrawable[1].setTop(430, 522, false, false);
+        messageDrawable[1].setTop(430, 560, 522, false, false);
         messageDrawable[1].draw(canvas);
 
         messageDrawable[0].setBounds(20, 323, 399, 323 + 92);
-        messageDrawable[0].setTop(323, 522, false, false);
+        messageDrawable[0].setTop(323, 560, 522, false, false);
         messageDrawable[0].draw(canvas);
 
         paint.setColor(messageFieldColor);

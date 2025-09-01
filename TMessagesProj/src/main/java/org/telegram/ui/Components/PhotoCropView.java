@@ -37,18 +37,25 @@ import org.telegram.ui.Components.Crop.CropView;
 
 public class PhotoCropView extends FrameLayout {
 
+    public void setSubtitle(String subtitle) {
+        cropView.setSubtitle(subtitle);
+    }
+
     public interface PhotoCropViewDelegate {
         void onChange(boolean reset);
         void onUpdate();
         void onTapUp();
         int getVideoThumbX();
         void onVideoThumbClick();
+        boolean rotate();
+        boolean mirror();
     }
 
     private PhotoCropViewDelegate delegate;
 
-    private CropView cropView;
-    private CropRotationWheel wheelView;
+    public boolean isReset = true;
+    public CropView cropView;
+    public CropRotationWheel wheelView;
 
     private boolean inBubbleMode;
 
@@ -62,6 +69,7 @@ public class PhotoCropView extends FrameLayout {
     private float flashAlpha = 0.0f;
 
     private Paint circlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Theme.ResourcesProvider resourcesProvider;
 
     public final Property<PhotoCropView, Float> ANIMATION_VALUE = new AnimationProperties.FloatProperty<PhotoCropView>("thumbAnimationProgress") {
         @Override
@@ -89,8 +97,9 @@ public class PhotoCropView extends FrameLayout {
         }
     };
 
-    public PhotoCropView(Context context) {
+    public PhotoCropView(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
+        this.resourcesProvider = resourcesProvider;
 
         inBubbleMode = context instanceof BubbleActivity;
 
@@ -98,6 +107,7 @@ public class PhotoCropView extends FrameLayout {
         cropView.setListener(new CropView.CropViewListener() {
             @Override
             public void onChange(boolean reset) {
+                isReset = reset;
                 if (delegate != null) {
                     delegate.onChange(reset);
                 }
@@ -137,6 +147,7 @@ public class PhotoCropView extends FrameLayout {
             @Override
             public void onChange(float angle) {
                 cropView.setRotation(angle);
+                isReset = false;
                 if (delegate != null) {
                     delegate.onChange(false);
                 }
@@ -154,12 +165,18 @@ public class PhotoCropView extends FrameLayout {
 
             @Override
             public boolean rotate90Pressed() {
-                return rotate();
+                if (delegate != null) {
+                    return delegate.rotate();
+                }
+                return false;
             }
 
             @Override
             public boolean mirror() {
-                return PhotoCropView.this.mirror();
+                if (delegate != null) {
+                    return delegate.mirror();
+                }
+                return false;
             }
         });
         addView(wheelView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER | Gravity.BOTTOM, 0, 0, 0, 0));
@@ -209,18 +226,18 @@ public class PhotoCropView extends FrameLayout {
                 canvas.drawCircle(rect.centerX(), rect.centerY(), rect.width() / 2, circlePaint);
             }
 
-            circlePaint.setColor(Theme.getColor(Theme.key_dialogFloatingButton));
+            circlePaint.setColor(getThemedColor(Theme.key_chat_editMediaButton));
             circlePaint.setAlpha(Math.min(255, (int) (255 * thumbAnimationProgress * thumbImageVisibleProgress)));
             canvas.drawCircle(targetX + targetSize / 2, targetY + targetSize + AndroidUtilities.dp(8), AndroidUtilities.dp(3), circlePaint);
         }
         return result;
     }
 
-    public boolean rotate() {
+    public boolean rotate(float diff) {
         if (wheelView != null) {
             wheelView.reset(false);
         }
-        return cropView.rotate90Degrees();
+        return cropView.rotate(diff);
     }
 
     public boolean mirror() {
@@ -313,8 +330,12 @@ public class PhotoCropView extends FrameLayout {
     }
 
     public void reset() {
+        reset(false);
+    }
+
+    public void reset(boolean force) {
         wheelView.reset(true);
-        cropView.reset();
+        cropView.reset(force);
     }
 
     public void onAppear() {
@@ -379,5 +400,9 @@ public class PhotoCropView extends FrameLayout {
     public void invalidate() {
         super.invalidate();
         cropView.invalidate();
+    }
+
+    private int getThemedColor(int key) {
+        return Theme.getColor(key, resourcesProvider);
     }
 }

@@ -1,6 +1,5 @@
 package org.telegram.ui;
 
-import android.graphics.Color;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -13,7 +12,6 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.MessageObject;
 import org.telegram.tgnet.TLRPC;
-import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.voip.GroupCallGridCell;
 import org.telegram.ui.Components.voip.GroupCallMiniTextureView;
@@ -89,7 +87,7 @@ public class GroupCallTabletGridAdapter extends RecyclerListView.SelectionAdapte
 
         ChatObject.VideoParticipant oldVideoParticipant = cell.getParticipant();
         ChatObject.VideoParticipant videoParticipant;
-        TLRPC.TL_groupCallParticipant participant;
+        TLRPC.GroupCallParticipant participant;
         videoParticipant = videoParticipants.get(position);
         participant = videoParticipants.get(position).participant;
         cell.spanCount = getSpanCount(position);
@@ -130,7 +128,7 @@ public class GroupCallTabletGridAdapter extends RecyclerListView.SelectionAdapte
         }
     }
 
-    public void scrollToPeerId(int peerId, RecyclerListView fullscreenUsersListView) {
+    public void scrollToPeerId(long peerId, RecyclerListView fullscreenUsersListView) {
 //        for (int i = 0; i < participants.size(); i++) {
 //            if (peerId == MessageObject.getPeerId(participants.get(i).peer)) {
 //                ((LinearLayoutManager) fullscreenUsersListView.getLayoutManager()).scrollToPositionWithOffset(i, AndroidUtilities.dp(13));

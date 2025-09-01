@@ -29,24 +29,26 @@ public class LocationLoadingCell extends FrameLayout {
     private RadialProgressView progressBar;
     private TextView textView;
     private ImageView imageView;
+    private final Theme.ResourcesProvider resourcesProvider;
 
-    public LocationLoadingCell(Context context) {
+    public LocationLoadingCell(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
+        this.resourcesProvider = resourcesProvider;
 
-        progressBar = new RadialProgressView(context);
+        progressBar = new RadialProgressView(context, resourcesProvider);
         addView(progressBar, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER));
 
         imageView = new ImageView(context);
         imageView.setImageResource(R.drawable.location_empty);
-        imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogEmptyImage), PorterDuff.Mode.MULTIPLY));
+        imageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_dialogEmptyImage), PorterDuff.Mode.MULTIPLY));
         addView(imageView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER, 0, 0, 0, 24));
 
         textView = new TextView(context);
-        textView.setTextColor(Theme.getColor(Theme.key_dialogEmptyText));
+        textView.setTextColor(getThemedColor(Theme.key_dialogEmptyText));
         textView.setGravity(Gravity.CENTER);
-        textView.setTypeface(AndroidUtilities.getTypeface("fonts/rmedium.ttf"));
+        textView.setTypeface(AndroidUtilities.bold());
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 17);
-        textView.setText(LocaleController.getString("NoPlacesFound", R.string.NoPlacesFound));
+        textView.setText(LocaleController.getString(R.string.NoPlacesFound));
         addView(textView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER, 0, 34, 0, 0));
     }
 
@@ -59,5 +61,9 @@ public class LocationLoadingCell extends FrameLayout {
         progressBar.setVisibility(value ? VISIBLE : INVISIBLE);
         textView.setVisibility(value ? INVISIBLE : VISIBLE);
         imageView.setVisibility(value ? INVISIBLE : VISIBLE);
+    }
+
+    private int getThemedColor(int key) {
+        return Theme.getColor(key, resourcesProvider);
     }
 }

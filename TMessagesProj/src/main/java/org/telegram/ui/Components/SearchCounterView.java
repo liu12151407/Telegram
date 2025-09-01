@@ -43,7 +43,7 @@ public class SearchCounterView extends View {
     private int countWidth;
 
     private int textColor;
-    private String textColorKey = Theme.key_chat_searchPanelText;
+    private int textColorKey = Theme.key_chat_searchPanelText;
 
     int lastH;
     int gravity = Gravity.CENTER;
@@ -53,11 +53,12 @@ public class SearchCounterView extends View {
     public float horizontalPadding;
 
     String currentString;
+    private final Theme.ResourcesProvider resourcesProvider;
 
-
-    public SearchCounterView(Context context) {
+    public SearchCounterView(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
-        textPaint.setTypeface(AndroidUtilities.getTypeface("fonts/rmedium.ttf"));
+        this.resourcesProvider = resourcesProvider;
+        textPaint.setTypeface(AndroidUtilities.bold());
         textPaint.setTextSize(AndroidUtilities.dp(15));
     }
 
@@ -153,9 +154,9 @@ public class SearchCounterView extends View {
                 int cutIndexNew = 0;
                 int cutIndexOld = 0;
                 if (countStartIndex > 0) {
-                    oldSpannableStr.setSpan(new EmptyStubSpan(), 0, countStartIndex, SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE);
-                    newSpannableStr.setSpan(new EmptyStubSpan(), 0, countStartIndex, SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE);
-                    stableStr.setSpan(new EmptyStubSpan(), 0, countStartIndex, SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    oldSpannableStr.setSpan(new EmptyStubSpan(), 0, Math.min(oldSpannableStr.length(), countStartIndex), SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    newSpannableStr.setSpan(new EmptyStubSpan(), 0, Math.min(newSpannableStr.length(), countStartIndex), SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    stableStr.setSpan(new EmptyStubSpan(), 0, Math.min(stableStr.length(), countStartIndex), SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE);
                 }
                 for (int i = countStartIndex; i < n; i++) {
                     if (!newEndReached && !oldEndReached) {
@@ -214,7 +215,7 @@ public class SearchCounterView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        int textColor = Theme.getColor(textColorKey);
+        int textColor = Theme.getColor(textColorKey, resourcesProvider);
 
         if (this.textColor != textColor) {
             this.textColor = textColor;

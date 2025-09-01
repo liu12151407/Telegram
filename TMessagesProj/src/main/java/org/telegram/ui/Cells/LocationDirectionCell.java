@@ -14,25 +14,27 @@ import org.telegram.ui.Components.LayoutHelper;
 @SuppressWarnings("FieldCanBeLocal")
 public class LocationDirectionCell extends FrameLayout {
 
+    private final Theme.ResourcesProvider resourcesProvider;
     private SimpleTextView buttonTextView;
     private FrameLayout frameLayout;
 
-    public LocationDirectionCell(Context context) {
+    public LocationDirectionCell(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
+        this.resourcesProvider = resourcesProvider;
 
         frameLayout = new FrameLayout(context);
-        frameLayout.setBackgroundDrawable(Theme.createSimpleSelectorRoundRectDrawable(AndroidUtilities.dp(4), Theme.getColor(Theme.key_featuredStickers_addButton), Theme.getColor(Theme.key_featuredStickers_addButtonPressed)));
+        frameLayout.setBackground(Theme.AdaptiveRipple.filledRect(getThemedColor(Theme.key_featuredStickers_addButton), 8));
         addView(frameLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.LEFT | Gravity.TOP, 16, 10, 16, 0));
 
         buttonTextView = new SimpleTextView(context);
         buttonTextView.setPadding(AndroidUtilities.dp(34), 0, AndroidUtilities.dp(34), 0);
         buttonTextView.setGravity(Gravity.CENTER);
         buttonTextView.setDrawablePadding(AndroidUtilities.dp(8));
-        buttonTextView.setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText));
+        buttonTextView.setTextColor(getThemedColor(Theme.key_featuredStickers_buttonText));
         buttonTextView.setTextSize(14);
-        buttonTextView.setText(LocaleController.getString("Directions", R.string.Directions));
-        buttonTextView.setLeftDrawable(R.drawable.navigate);
-        buttonTextView.setTypeface(AndroidUtilities.getTypeface("fonts/rmedium.ttf"));
+        buttonTextView.setText(LocaleController.getString(R.string.Directions));
+        buttonTextView.setLeftDrawable(R.drawable.filled_directions);
+        buttonTextView.setTypeface(AndroidUtilities.bold());
         frameLayout.addView(buttonTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
     }
 
@@ -43,5 +45,9 @@ public class LocationDirectionCell extends FrameLayout {
 
     public void setOnButtonClick(OnClickListener onButtonClick) {
         frameLayout.setOnClickListener(onButtonClick);
+    }
+
+    private int getThemedColor(int key) {
+        return Theme.getColor(key, resourcesProvider);
     }
 }

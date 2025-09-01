@@ -5,6 +5,8 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.Configuration;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.util.LongSparseArray;
 import android.util.SparseArray;
 import android.view.Gravity;
@@ -109,23 +111,25 @@ public class TrendingStickersLayout extends FrameLayout implements NotificationC
     private boolean ignoreLayout;
     private boolean wasLayout;
     private boolean loaded;
-    private int hash;
+    private long hash;
     ValueAnimator glueToTopAnimator;
     private boolean gluedToTop;
     private boolean scrollFromAnimator;
     private TLRPC.StickerSetCovered scrollToSet;
+    private final Theme.ResourcesProvider resourcesProvider;
 
     public TrendingStickersLayout(@NonNull Context context, Delegate delegate) {
-        this(context, delegate, new TLRPC.StickerSetCovered[10], new LongSparseArray<>(), new LongSparseArray<>(), null);
+        this(context, delegate, new TLRPC.StickerSetCovered[10], new LongSparseArray<>(), new LongSparseArray<>(), null, null);
     }
 
-    public TrendingStickersLayout(@NonNull Context context, Delegate delegate, TLRPC.StickerSetCovered[] primaryInstallingStickerSets, LongSparseArray<TLRPC.StickerSetCovered> installingStickerSets, LongSparseArray<TLRPC.StickerSetCovered> removingStickerSets, TLRPC.StickerSetCovered scrollToSet) {
+    public TrendingStickersLayout(@NonNull Context context, Delegate delegate, TLRPC.StickerSetCovered[] primaryInstallingStickerSets, LongSparseArray<TLRPC.StickerSetCovered> installingStickerSets, LongSparseArray<TLRPC.StickerSetCovered> removingStickerSets, TLRPC.StickerSetCovered scrollToSet, Theme.ResourcesProvider resourcesProvider) {
         super(context);
         this.delegate = delegate;
         this.primaryInstallingStickerSets = primaryInstallingStickerSets;
         this.installingStickerSets = installingStickerSets;
         this.removingStickerSets = removingStickerSets;
         this.scrollToSet = scrollToSet;
+        this.resourcesProvider = resourcesProvider;
         this.adapter = new TrendingStickersAdapter(context);
 
         final StickersSearchAdapter.Delegate searchAdapterDelegate = new StickersSearchAdapter.Delegate() {
@@ -179,18 +183,18 @@ public class TrendingStickersLayout extends FrameLayout implements NotificationC
                 delegate.setLastSearchKeyboardLanguage(language);
             }
         };
-        searchAdapter = new StickersSearchAdapter(context, searchAdapterDelegate, primaryInstallingStickerSets, installingStickerSets, removingStickerSets);
+        searchAdapter = new StickersSearchAdapter(context, searchAdapterDelegate, primaryInstallingStickerSets, installingStickerSets, removingStickerSets, resourcesProvider);
 
         searchLayout = new FrameLayout(context);
-        searchLayout.setBackgroundColor(Theme.getColor(Theme.key_dialogBackground));
+        searchLayout.setBackgroundColor(getThemedColor(Theme.key_dialogBackground));
 
-        searchView = new SearchField(context, true) {
+        searchView = new SearchField(context, true, resourcesProvider) {
             @Override
             public void onTextChange(String text) {
                 searchAdapter.search(text);
             }
         };
-        searchView.setHint(LocaleController.getString("SearchTrendingStickersHint", R.string.SearchTrendingStickersHint));
+        searchView.setHint(LocaleController.getString(R.string.SearchTrendingStickersHint));
         searchLayout.addView(searchView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.TOP));
 
         listView = new RecyclerListView(context) {
@@ -328,7 +332,7 @@ public class TrendingStickersLayout extends FrameLayout implements NotificationC
         addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.LEFT | Gravity.TOP, 0, 0, 0, 0));
 
         shadowView = new View(context);
-        shadowView.setBackgroundColor(Theme.getColor(Theme.key_dialogShadowLine));
+        shadowView.setBackgroundColor(getThemedColor(Theme.key_dialogShadowLine));
         shadowView.setAlpha(0.0f);
         final FrameLayout.LayoutParams shadowViewParams = new FrameLayout.LayoutParams(LayoutHelper.MATCH_PARENT, AndroidUtilities.getShadowHeight());
         shadowViewParams.topMargin = AndroidUtilities.dp(58);
@@ -356,6 +360,48 @@ public class TrendingStickersLayout extends FrameLayout implements NotificationC
                 }
             }
         }
+    }
+
+    private float highlightProgress = 1f;
+    Paint paint = new Paint();
+
+    @Override
+    protected void dispatchDraw(Canvas canvas) {
+        if (highlightProgress != 0 && scrollToSet != null) {
+            highlightProgress -= 16f / 3000f;
+            if (highlightProgress < 0) {
+                highlightProgress = 0;
+            } else {
+                invalidate();
+            }
+            Integer pos = adapter.setsToPosition.get(scrollToSet);
+            if (pos != null) {
+                View view1 = layoutManager.findViewByPosition(pos);
+                int t = -1, b = -1;
+                if (view1 != null) {
+                    t = (int) view1.getY();
+                    b = (int) view1.getY() + view1.getMeasuredHeight();
+
+                }
+                View view2 = layoutManager.findViewByPosition(pos + 1);
+                if (view2 != null) {
+                    if (view1 == null) {
+                        t = (int) view2.getY();
+                    }
+                    b = (int) view2.getY() + view2.getMeasuredHeight();
+                }
+
+                if (view1 != null || view2 != null) {
+                    paint.setColor(Theme.getColor(Theme.key_featuredStickers_addButton));
+                    float p = highlightProgress < 0.06f ? highlightProgress / 0.06f : 1f;
+                    paint.setAlpha((int) (255 * 0.1f * p));
+                    canvas.drawRect(0, t, getMeasuredWidth(), b, paint);
+                }
+            }
+
+        }
+
+        super.dispatchDraw(canvas);
     }
 
     @Override
@@ -414,7 +460,7 @@ public class TrendingStickersLayout extends FrameLayout implements NotificationC
         } else {
             stickersAlertDelegate = null;
         }
-        final StickersAlert stickersAlert = new StickersAlert(getContext(), parentFragment, inputStickerSet, null, stickersAlertDelegate);
+        final StickersAlert stickersAlert = new StickersAlert(getContext(), parentFragment, inputStickerSet, null, stickersAlertDelegate, resourcesProvider, false);
         stickersAlert.setShowTooltipWhenToggle(false);
         stickersAlert.setInstallDelegate(new StickersAlert.StickersAlertInstallDelegate() {
             @Override
@@ -456,7 +502,7 @@ public class TrendingStickersLayout extends FrameLayout implements NotificationC
                 }
             }
         } else if (id == NotificationCenter.featuredStickersDidLoad) {
-            if (hash != MediaDataController.getInstance(currentAccount).getFeaturesStickersHashWithoutUnread()) {
+            if (hash != MediaDataController.getInstance(currentAccount).getFeaturedStickersHashWithoutUnread(false)) {
                 loaded = false;
             }
             if (loaded) {
@@ -646,7 +692,7 @@ public class TrendingStickersLayout extends FrameLayout implements NotificationC
             View view = null;
             switch (viewType) {
                 case 0:
-                    StickerEmojiCell stickerCell = new StickerEmojiCell(context, false) {
+                    StickerEmojiCell stickerCell = new StickerEmojiCell(context, false, resourcesProvider) {
                         public void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
                             super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(82), MeasureSpec.EXACTLY));
                         }
@@ -658,7 +704,7 @@ public class TrendingStickersLayout extends FrameLayout implements NotificationC
                     view = new EmptyCell(context);
                     break;
                 case 2:
-                    view = new FeaturedStickerSetInfoCell(context, 17, true);
+                    view = new FeaturedStickerSetInfoCell(context, 17, true, true, resourcesProvider);
                     ((FeaturedStickerSetInfoCell) view).setAddOnClickListener(v -> {
                         final FeaturedStickerSetInfoCell cell = (FeaturedStickerSetInfoCell) v.getParent();
                         TLRPC.StickerSetCovered pack = cell.getStickerSet();
@@ -677,10 +723,10 @@ public class TrendingStickersLayout extends FrameLayout implements NotificationC
                     view = new View(context);
                     break;
                 case 4:
-                    view = new GraySectionCell(context);
+                    view = new GraySectionCell(context, resourcesProvider);
                     break;
                 case 5:
-                    final FeaturedStickerSetCell2 stickerSetCell = new FeaturedStickerSetCell2(context);
+                    final FeaturedStickerSetCell2 stickerSetCell = new FeaturedStickerSetCell2(context, resourcesProvider);
                     stickerSetCell.setAddOnClickListener(v -> {
                         final FeaturedStickerSetCell2 cell = (FeaturedStickerSetCell2) v.getParent();
                         TLRPC.StickerSetCovered pack = cell.getStickerSet();
@@ -717,7 +763,7 @@ public class TrendingStickersLayout extends FrameLayout implements NotificationC
                     bindStickerSetCell(holder.itemView, position, false);
                     break;
                 case 4:
-                    ((GraySectionCell) holder.itemView).setText(LocaleController.getString("OtherStickers", R.string.OtherStickers));
+                    ((GraySectionCell) holder.itemView).setText(LocaleController.getString(R.string.OtherStickers));
                     break;
             }
         }
@@ -744,7 +790,7 @@ public class TrendingStickersLayout extends FrameLayout implements NotificationC
                 final ArrayList<Long> unreadStickers = mediaDataController.getUnreadStickerSets();
                 unread = unreadStickers != null && unreadStickers.contains(stickerSetCovered.set.id);
                 if (unread) {
-                    mediaDataController.markFaturedStickersByIdAsRead(stickerSetCovered.set.id);
+                    mediaDataController.markFeaturedStickersByIdAsRead(false, stickerSetCovered.set.id);
                 }
             } else {
                 stickerSetCovered = sets.get((Integer) cache.get(position));
@@ -878,7 +924,7 @@ public class TrendingStickersLayout extends FrameLayout implements NotificationC
             }
             if (totalItems != 0) {
                 loaded = true;
-                hash = mediaDataController.getFeaturesStickersHashWithoutUnread();
+                hash = mediaDataController.getFeaturedStickersHashWithoutUnread(false);
             }
             notifyDataSetChanged();
         }
@@ -953,5 +999,9 @@ public class TrendingStickersLayout extends FrameLayout implements NotificationC
             FeaturedStickerSetCell2.createThemeDescriptions(descriptions, listView, delegate);
             GraySectionCell.createThemeDescriptions(descriptions, listView);
         }
+    }
+
+    private int getThemedColor(int key) {
+        return Theme.getColor(key, resourcesProvider);
     }
 }

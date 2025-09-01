@@ -28,8 +28,11 @@ import android.widget.ImageView;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import androidx.viewpager.widget.ViewPager;
+
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
+import org.telegram.ui.Components.AnimatedArrowDrawable;
 import org.telegram.ui.Components.AudioPlayerAlert;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BackupImageView;
@@ -55,13 +58,10 @@ import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.ScamDrawable;
 import org.telegram.ui.Components.SeekBarView;
 import org.telegram.ui.Components.TypefaceSpan;
-import org.telegram.ui.Components.VideoTimelineView;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
-
-import androidx.viewpager.widget.ViewPager;
 
 public class ThemeDescription {
 
@@ -103,7 +103,7 @@ public class ThemeDescription {
     private Paint[] paintToUpdate;
     private Drawable[] drawablesToUpdate;
     private Class[] listClasses;
-    private String currentKey;
+    private int currentKey;
     private String lottieLayerName;
     private ThemeDescriptionDelegate delegate;
     private int previousColor;
@@ -115,12 +115,14 @@ public class ThemeDescription {
 
     private HashMap<String, Field> cachedFields;
     private HashMap<String, Boolean> notFoundCachedFields;
+    public Theme.ResourcesProvider resourcesProvider;
 
     public interface ThemeDescriptionDelegate {
         void didSetColor();
+        default void onAnimationProgress(float progress) {}
     }
 
-    public ThemeDescription(View view, int flags, Class[] classes, Paint[] paint, Drawable[] drawables, ThemeDescriptionDelegate themeDescriptionDelegate, String key, Object unused) {
+    public ThemeDescription(View view, int flags, Class[] classes, Paint[] paint, Drawable[] drawables, ThemeDescriptionDelegate themeDescriptionDelegate, int key, Object unused) {
         currentKey = key;
         paintToUpdate = paint;
         drawablesToUpdate = drawables;
@@ -133,7 +135,7 @@ public class ThemeDescription {
         }
     }
 
-    public ThemeDescription(View view, int flags, Class[] classes, Paint paint, Drawable[] drawables, ThemeDescriptionDelegate themeDescriptionDelegate, String key) {
+    public ThemeDescription(View view, int flags, Class[] classes, Paint paint, Drawable[] drawables, ThemeDescriptionDelegate themeDescriptionDelegate, int key) {
         currentKey = key;
         if (paint != null) {
             paintToUpdate = new Paint[]{paint};
@@ -148,7 +150,7 @@ public class ThemeDescription {
         }
     }
 
-    public ThemeDescription(View view, int flags, Class[] classes, RLottieDrawable[] drawables, String layerName, String key) {
+    public ThemeDescription(View view, int flags, Class[] classes, RLottieDrawable[] drawables, String layerName, int key) {
         currentKey = key;
         lottieLayerName = layerName;
         drawablesToUpdate = drawables;
@@ -160,11 +162,11 @@ public class ThemeDescription {
         }
     }
 
-    public ThemeDescription(View view, int flags, Class[] classes, String[] classesFields, Paint[] paint, Drawable[] drawables, ThemeDescriptionDelegate themeDescriptionDelegate, String key) {
+    public ThemeDescription(View view, int flags, Class[] classes, String[] classesFields, Paint[] paint, Drawable[] drawables, ThemeDescriptionDelegate themeDescriptionDelegate, int key) {
         this(view, flags, classes, classesFields, paint, drawables, -1, themeDescriptionDelegate, key);
     }
 
-    public ThemeDescription(View view, int flags, Class[] classes, String[] classesFields, Paint[] paint, Drawable[] drawables, int alpha, ThemeDescriptionDelegate themeDescriptionDelegate, String key) {
+    public ThemeDescription(View view, int flags, Class[] classes, String[] classesFields, Paint[] paint, Drawable[] drawables, int alpha, ThemeDescriptionDelegate themeDescriptionDelegate, int key) {
         currentKey = key;
         paintToUpdate = paint;
         drawablesToUpdate = drawables;
@@ -181,7 +183,7 @@ public class ThemeDescription {
         }
     }
 
-    public ThemeDescription(View view, int flags, Class[] classes, String[] classesFields, String layerName, String key) {
+    public ThemeDescription(View view, int flags, Class[] classes, String[] classesFields, String layerName, int key) {
         currentKey = key;
         lottieLayerName = layerName;
         viewToInvalidate = view;
@@ -205,13 +207,13 @@ public class ThemeDescription {
         setColor(color, useDefault, true);
     }
 
-    private boolean checkTag(String key, View view) {
-        if (key == null || view == null) {
+    private boolean checkTag(int key, View view) {
+        if (key < 0 || view == null) {
             return false;
         }
         Object viewTag = view.getTag();
-        if (viewTag instanceof String) {
-            return ((String) viewTag).contains(key);
+        if (viewTag instanceof Integer) {
+            return ((Integer) viewTag) == key;
         }
         return false;
     }
@@ -254,6 +256,8 @@ public class ThemeDescription {
                     }
                 } else if (drawablesToUpdate[a] instanceof AvatarDrawable) {
                     ((AvatarDrawable) drawablesToUpdate[a]).setColor(color);
+                } else if (drawablesToUpdate[a] instanceof AnimatedArrowDrawable) {
+                    ((AnimatedArrowDrawable) drawablesToUpdate[a]).setColor(color);
                 } else {
                     drawablesToUpdate[a].setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
                 }
@@ -265,6 +269,7 @@ public class ThemeDescription {
                     Drawable background = viewToInvalidate.getBackground();
                     if (background instanceof MessageBackgroundDrawable) {
                         ((MessageBackgroundDrawable) background).setColor(color);
+                        ((MessageBackgroundDrawable) background).setCustomPaint(null);
                     } else {
                         viewToInvalidate.setBackgroundColor(color);
                     }
@@ -333,9 +338,6 @@ public class ThemeDescription {
             if ((changeFlags & FLAG_AB_SUBMENUBACKGROUND) != 0) {
                 ((ActionBar) viewToInvalidate).setPopupBackgroundColor(color, false);
             }
-        }
-        if (viewToInvalidate instanceof VideoTimelineView) {
-            ((VideoTimelineView) viewToInvalidate).setColor(color);
         }
         if (viewToInvalidate instanceof EmptyTextProgressView) {
             if ((changeFlags & FLAG_TEXTCOLOR) != 0) {
@@ -583,6 +585,7 @@ public class ThemeDescription {
                                     Drawable background = view.getBackground();
                                     if (background instanceof MessageBackgroundDrawable) {
                                         ((MessageBackgroundDrawable) background).setColor(color);
+                                        ((MessageBackgroundDrawable) background).setCustomPaint(null);
                                     } else {
                                         view.setBackgroundColor(color);
                                     }
@@ -734,6 +737,15 @@ public class ThemeDescription {
                                                 TextView textView = i == 0 ? ((AudioPlayerAlert.ClippingTextViewSwitcher) object).getTextView() : ((AudioPlayerAlert.ClippingTextViewSwitcher) object).getNextTextView();
                                                 if (textView != null) {
                                                     textView.setTextColor(color);
+                                                    CharSequence text = textView.getText();
+                                                    if (text instanceof SpannedString) {
+                                                        TypefaceSpan[] spans = ((SpannedString) text).getSpans(0, text.length(), TypefaceSpan.class);
+                                                        if (spans != null && spans.length > 0) {
+                                                            for (int spanIdx = 0; spanIdx < spans.length; spanIdx++) {
+                                                                spans[spanIdx].setColor(color);
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -752,7 +764,7 @@ public class ThemeDescription {
         }
     }
 
-    public String getCurrentKey() {
+    public int getCurrentKey() {
         return currentKey;
     }
 
@@ -765,7 +777,16 @@ public class ThemeDescription {
     }
 
     public int getSetColor() {
-        return Theme.getColor(currentKey);
+        Integer color = resourcesProvider != null ? resourcesProvider.getColor(currentKey) : null;
+        return color != null ? color : Theme.getColor(currentKey);
+    }
+
+    public void setAnimatedColor(int color) {
+        if (resourcesProvider != null) {
+            resourcesProvider.setAnimatedColor(getCurrentKey(), color);
+        } else {
+            Theme.setAnimatedColor(getCurrentKey(), color);
+        }
     }
 
     public void setDefaultColor() {
@@ -777,6 +798,6 @@ public class ThemeDescription {
     }
 
     public String getTitle() {
-        return currentKey;
+        return ThemeColors.getStringName(currentKey);
     }
 }

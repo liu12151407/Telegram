@@ -1,24 +1,28 @@
 package org.telegram.messenger;
 
+import android.os.Build;
+import android.os.Looper;
 import android.os.SystemClock;
-
-import java.util.HashMap;
-import java.util.LinkedList;
+import android.util.SparseIntArray;
 
 import androidx.annotation.UiThread;
 
+import org.telegram.ui.Components.Reactions.HwEmojis;
+
+import java.util.LinkedList;
+
 public class DispatchQueuePool {
 
-    private LinkedList<DispatchQueue> queues = new LinkedList<>();
-    private HashMap<DispatchQueue, Integer> busyQueuesMap = new HashMap<>();
-    private LinkedList<DispatchQueue> busyQueues = new LinkedList<>();
+    private final LinkedList<DispatchQueue> queues = new LinkedList<>();
+    private final SparseIntArray busyQueuesMap = new SparseIntArray();
+    private final LinkedList<DispatchQueue> busyQueues = new LinkedList<>();
     private int maxCount;
     private int createdCount;
     private int guid;
     private int totalTasksCount;
     private boolean cleanupScheduled;
 
-    private Runnable cleanupRunnable = new Runnable() {
+    private final Runnable cleanupRunnable = new Runnable() {
         @Override
         public void run() {
             if (!queues.isEmpty()) {
@@ -50,6 +54,10 @@ public class DispatchQueuePool {
 
     @UiThread
     public void execute(Runnable runnable) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            AndroidUtilities.runOnUIThread(() -> execute(runnable));
+            return;
+        }
         DispatchQueue queue;
         if (!busyQueues.isEmpty() && (totalTasksCount / 2 <= busyQueues.size() || queues.isEmpty() && createdCount >= maxCount)) {
             queue = busyQueues.remove(0);
@@ -66,22 +74,24 @@ public class DispatchQueuePool {
         }
         totalTasksCount++;
         busyQueues.add(queue);
-        Integer count = busyQueuesMap.get(queue);
-        if (count == null) {
-            count = 0;
+        int count = busyQueuesMap.get(queue.index, 0);
+        busyQueuesMap.put(queue.index, count + 1);
+        if (HwEmojis.isHwEnabled()) {
+            queue.setPriority(Thread.MIN_PRIORITY);
+        } else if (queue.getPriority() != Thread.MAX_PRIORITY) {
+            queue.setPriority(Thread.MAX_PRIORITY);
         }
-        busyQueuesMap.put(queue, count + 1);
         queue.postRunnable(() -> {
             runnable.run();
             AndroidUtilities.runOnUIThread(() -> {
                 totalTasksCount--;
-                int remainingTasksCount = busyQueuesMap.get(queue) - 1;
+                int remainingTasksCount = busyQueuesMap.get(queue.index) - 1;
                 if (remainingTasksCount == 0) {
-                    busyQueuesMap.remove(queue);
+                    busyQueuesMap.delete(queue.index);
                     busyQueues.remove(queue);
                     queues.add(queue);
                 } else {
-                    busyQueuesMap.put(queue, remainingTasksCount);
+                    busyQueuesMap.put(queue.index, remainingTasksCount);
                 }
             });
         });

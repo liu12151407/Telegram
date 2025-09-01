@@ -407,13 +407,19 @@ public class GroupCallPipButton extends FrameLayout implements NotificationCente
             }
             wavesEnter = showWaves ? 1f : 0f;
         }
-        String contentDescription = LocaleController.getString("VoipGroupVoiceChat", R.string.VoipGroupVoiceChat);
+        String contentDescription;
+        VoIPService voIPService = VoIPService.getSharedInstance();
+        if (voIPService != null && ChatObject.isChannelOrGiga(voIPService.getChat())) {
+            contentDescription = LocaleController.getString(R.string.VoipChannelVoiceChat);
+        } else {
+            contentDescription = LocaleController.getString(R.string.VoipGroupVoiceChat);
+        }
         if (state == MUTE_BUTTON_STATE_UNMUTE) {
-            contentDescription +=  ", " + LocaleController.getString("VoipTapToMute", R.string.VoipTapToMute);
+            contentDescription +=  ", " + LocaleController.getString(R.string.VoipTapToMute);
         } else if (state == MUTE_BUTTON_STATE_RECONNECT) {
-            contentDescription += ", " + LocaleController.getString("Connecting", R.string.Connecting);
+            contentDescription += ", " + LocaleController.getString(R.string.Connecting);
         } else if (state == MUTE_BUTTON_STATE_MUTED_BY_ADMIN) {
-            contentDescription += ", " + LocaleController.getString("VoipMutedByAdmin", R.string.VoipMutedByAdmin);
+            contentDescription += ", " + LocaleController.getString(R.string.VoipMutedByAdmin);
         }
         setContentDescription(contentDescription);
         invalidate();
@@ -423,7 +429,7 @@ public class GroupCallPipButton extends FrameLayout implements NotificationCente
     public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
         super.onInitializeAccessibilityNodeInfo(info);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && GroupCallPip.getInstance() != null) {
-            final String label = GroupCallPip.getInstance().showAlert ? LocaleController.getString("AccDescrCloseMenu", R.string.AccDescrCloseMenu) : LocaleController.getString("AccDescrOpenMenu2", R.string.AccDescrOpenMenu2);
+            final String label = GroupCallPip.getInstance().showAlert ? LocaleController.getString(R.string.AccDescrCloseMenu) : LocaleController.getString(R.string.AccDescrOpenMenu2);
             info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK, label));
         }
     }
@@ -453,7 +459,7 @@ public class GroupCallPipButton extends FrameLayout implements NotificationCente
             if (currentCallState == VoIPService.STATE_WAIT_INIT || currentCallState == VoIPService.STATE_WAIT_INIT_ACK || currentCallState == VoIPService.STATE_CREATING || currentCallState == VoIPService.STATE_RECONNECTING) {
                 setState(FragmentContextViewWavesDrawable.MUTE_BUTTON_STATE_CONNECTING);
             } else {
-                TLRPC.TL_groupCallParticipant participant = voIPService.groupCall.participants.get(voIPService.getSelfId());
+                TLRPC.GroupCallParticipant participant = voIPService.groupCall.participants.get(voIPService.getSelfId());
                 if (participant != null && !participant.can_self_unmute && participant.muted && !ChatObject.canManageCalls(voIPService.getChat())) {
                     if (!voIPService.isMicMute()) {
                         voIPService.setMicMute(true, false, false);

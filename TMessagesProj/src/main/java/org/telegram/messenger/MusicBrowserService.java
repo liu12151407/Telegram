@@ -34,7 +34,10 @@ import android.os.Process;
 import android.os.SystemClock;
 import android.service.media.MediaBrowserService;
 import android.text.TextUtils;
-import android.util.SparseArray;
+import android.util.Log;
+import android.widget.Toast;
+
+import androidx.collection.LongSparseArray;
 
 import org.telegram.SQLite.SQLiteCursor;
 import org.telegram.messenger.audioinfo.AudioInfo;
@@ -48,6 +51,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import javax.annotation.Nullable;
+
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class MusicBrowserService extends MediaBrowserService implements NotificationCenter.NotificationCenterDelegate {
 
@@ -55,17 +60,18 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
     private static final String SLOT_RESERVATION_SKIP_TO_PREV = "com.google.android.gms.car.media.ALWAYS_RESERVE_SPACE_FOR.ACTION_SKIP_TO_PREVIOUS";
     private static final String SLOT_RESERVATION_QUEUE = "com.google.android.gms.car.media.ALWAYS_RESERVE_SPACE_FOR.ACTION_QUEUE";
 
+    @Nullable
     private MediaSession mediaSession;
     private static final String MEDIA_ID_ROOT = "__ROOT__";
 
     private int currentAccount = UserConfig.selectedAccount;
     private boolean chatsLoaded;
     private boolean loadingChats;
-    private ArrayList<Integer> dialogs = new ArrayList<>();
-    private SparseArray<TLRPC.User> users = new SparseArray<>();
-    private SparseArray<TLRPC.Chat> chats = new SparseArray<>();
-    private SparseArray<ArrayList<MessageObject>> musicObjects = new SparseArray<>();
-    private SparseArray<ArrayList<MediaSession.QueueItem>> musicQueues = new SparseArray<>();
+    private ArrayList<Long> dialogs = new ArrayList<>();
+    private LongSparseArray<TLRPC.User> users = new LongSparseArray<>();
+    private LongSparseArray<TLRPC.Chat> chats = new LongSparseArray<>();
+    private LongSparseArray<ArrayList<MessageObject>> musicObjects = new LongSparseArray<>();
+    private LongSparseArray<ArrayList<MediaSession.QueueItem>> musicQueues = new LongSparseArray<>();
 
     public static final String ACTION_CMD = "com.example.android.mediabrowserservice.ACTION_CMD";
     public static final String CMD_NAME = "CMD_NAME";
@@ -76,7 +82,7 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
 
     private boolean serviceStarted;
 
-    private int lastSelectedDialog;
+    private long lastSelectedDialog;
 
     private static final int STOP_DELAY = 30000;
 
@@ -87,8 +93,17 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
         super.onCreate();
         ApplicationLoader.postInitApplication();
 
-        lastSelectedDialog = MessagesController.getNotificationsSettings(currentAccount).getInt("auto_lastSelectedDialog", 0);
+        lastSelectedDialog = AndroidUtilities.getPrefIntOrLong(MessagesController.getNotificationsSettings(currentAccount), "auto_lastSelectedDialog", 0);
 
+        updatePlaybackState(null);
+
+        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.messagePlayingPlayStateChanged);
+        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.messagePlayingDidStart);
+        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.messagePlayingDidReset);
+    }
+
+    private void createMediaSession() {
+        if (mediaSession != null) return;
         mediaSession = new MediaSession(this, "MusicService");
         setSessionToken(mediaSession.getSessionToken());
         mediaSession.setCallback(new MediaSessionCallback());
@@ -96,7 +111,7 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
 
         Context context = getApplicationContext();
         Intent intent = new Intent(context, LaunchActivity.class);
-        PendingIntent pi = PendingIntent.getActivity(context, 99, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+        PendingIntent pi = PendingIntent.getActivity(context, 99, intent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         mediaSession.setSessionActivity(pi);
 
         Bundle extras = new Bundle();
@@ -104,12 +119,6 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
         extras.putBoolean(SLOT_RESERVATION_SKIP_TO_PREV, true);
         extras.putBoolean(SLOT_RESERVATION_SKIP_TO_NEXT, true);
         mediaSession.setExtras(extras);
-
-        updatePlaybackState(null);
-
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.messagePlayingPlayStateChanged);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.messagePlayingDidStart);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.messagePlayingDidReset);
     }
 
     @Override
@@ -133,47 +142,55 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
         super.onDestroy();
         handleStopRequest(null);
         delayedStopHandler.removeCallbacksAndMessages(null);
-        mediaSession.release();
+        if (mediaSession != null) {
+            mediaSession.release();
+        }
     }
 
     @Override
     public BrowserRoot onGetRoot(String clientPackageName, int clientUid, Bundle rootHints) {
-        if (clientPackageName == null || Process.SYSTEM_UID != clientUid && Process.myUid() != clientUid && !clientPackageName.equals("com.google.android.mediasimulator") && !clientPackageName.equals("com.google.android.projection.gearhead")) {
+        if (clientPackageName == null || Process.SYSTEM_UID != clientUid && Process.myUid() != clientUid && !clientPackageName.equals("com.google.android.mediasimulator") && !clientPackageName.equals("com.google.android.projection.gearhead") || passcode()) {
             return null;
         }
         return new BrowserRoot(MEDIA_ID_ROOT, null);
     }
 
     @Override
-    public void onLoadChildren(final String parentMediaId, final Result<List<MediaBrowser.MediaItem>> result) {
+    public void onLoadChildren(String parentMediaId, Result<List<MediaBrowser.MediaItem>> result) {
+        if (passcode()) {
+            Toast.makeText(getApplicationContext(), LocaleController.getString(R.string.EnterYourTelegramPasscode), Toast.LENGTH_LONG).show();
+            stopSelf();
+            result.detach();
+            return;
+        }
         if (!chatsLoaded) {
             result.detach();
             if (loadingChats) {
                 return;
             }
             loadingChats = true;
-            final MessagesStorage messagesStorage = MessagesStorage.getInstance(currentAccount);
+            MessagesStorage messagesStorage = MessagesStorage.getInstance(currentAccount);
             messagesStorage.getStorageQueue().postRunnable(() -> {
                 try {
-                    ArrayList<Integer> usersToLoad = new ArrayList<>();
-                    ArrayList<Integer> chatsToLoad = new ArrayList<>();
-                    SQLiteCursor cursor = messagesStorage.getDatabase().queryFinalized(String.format(Locale.US, "SELECT DISTINCT uid FROM media_v2 WHERE uid != 0 AND mid > 0 AND type = %d", MediaDataController.MEDIA_MUSIC));
+                    ArrayList<Long> usersToLoad = new ArrayList<>();
+                    ArrayList<Long> chatsToLoad = new ArrayList<>();
+                    SQLiteCursor cursor = messagesStorage.getDatabase().queryFinalized(String.format(Locale.US, "SELECT DISTINCT uid FROM media_v4 WHERE uid != 0 AND mid > 0 AND type = %d", MediaDataController.MEDIA_MUSIC));
                     while (cursor.next()) {
-                        int lower_part = (int) cursor.longValue(0);
-                        if (lower_part == 0) {
+                        long dialogId = cursor.longValue(0);
+                        if (DialogObject.isEncryptedDialog(dialogId)) {
                             continue;
                         }
-                        dialogs.add(lower_part);
-                        if (lower_part > 0) {
-                            usersToLoad.add(lower_part);
+                        dialogs.add(dialogId);
+                        if (DialogObject.isUserDialog(dialogId)) {
+                            usersToLoad.add(dialogId);
                         } else {
-                            chatsToLoad.add(-lower_part);
+                            chatsToLoad.add(-dialogId);
                         }
                     }
                     cursor.dispose();
                     if (!dialogs.isEmpty()) {
                         String ids = TextUtils.join(",", dialogs);
-                        cursor = messagesStorage.getDatabase().queryFinalized(String.format(Locale.US, "SELECT uid, data, mid FROM media_v2 WHERE uid IN (%s) AND mid > 0 AND type = %d ORDER BY date DESC, mid DESC", ids, MediaDataController.MEDIA_MUSIC));
+                        cursor = messagesStorage.getDatabase().queryFinalized(String.format(Locale.US, "SELECT uid, data, mid FROM media_v4 WHERE uid IN (%s) AND mid > 0 AND type = %d ORDER BY date DESC, mid DESC", ids, MediaDataController.MEDIA_MUSIC));
                         while (cursor.next()) {
                             NativeByteBuffer data = cursor.byteBufferValue(1);
                             if (data != null) {
@@ -181,7 +198,7 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
                                 message.readAttachPath(data, UserConfig.getInstance(currentAccount).clientUserId);
                                 data.reuse();
                                 if (MessageObject.isMusicMessage(message)) {
-                                    int did = cursor.intValue(0);
+                                    long did = cursor.longValue(0);
                                     message.id = cursor.intValue(2);
                                     message.dialog_id = did;
                                     ArrayList<MessageObject> arrayList = musicObjects.get(did);
@@ -204,7 +221,7 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
                         cursor.dispose();
                         if (!usersToLoad.isEmpty()) {
                             ArrayList<TLRPC.User> usersArrayList = new ArrayList<>();
-                            messagesStorage.getUsersInternal(TextUtils.join(",", usersToLoad), usersArrayList);
+                            messagesStorage.getUsersInternal(usersToLoad, usersArrayList);
                             for (int a = 0; a < usersArrayList.size(); a++) {
                                 TLRPC.User user = usersArrayList.get(a);
                                 users.put(user.id, user);
@@ -233,6 +250,7 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
                         ArrayList<MessageObject> arrayList = musicObjects.get(lastSelectedDialog);
                         ArrayList<MediaSession.QueueItem> arrayList1 = musicQueues.get(lastSelectedDialog);
                         if (arrayList != null && !arrayList.isEmpty()) {
+                            createMediaSession();
                             mediaSession.setQueue(arrayList1);
                             if (lastSelectedDialog > 0) {
                                 TLRPC.User user = users.get(lastSelectedDialog);
@@ -251,7 +269,7 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
                             }
                             MessageObject messageObject = arrayList.get(0);
                             MediaMetadata.Builder builder = new MediaMetadata.Builder();
-                            builder.putLong(MediaMetadata.METADATA_KEY_DURATION, messageObject.getDuration() * 1000);
+                            builder.putLong(MediaMetadata.METADATA_KEY_DURATION, (long) (messageObject.getDuration() * 1000));
                             builder.putString(MediaMetadata.METADATA_KEY_ARTIST, messageObject.getMusicAuthor());
                             builder.putString(MediaMetadata.METADATA_KEY_TITLE, messageObject.getMusicTitle());
                             mediaSession.setMetadata(builder.build());
@@ -265,16 +283,27 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
         }
     }
 
-    private void loadChildrenImpl(final String parentMediaId, final Result<List<MediaBrowser.MediaItem>> result) {
+    private static boolean passcode() {
+        final int uptime = (int) (SystemClock.elapsedRealtime() / 1000);
+        return (
+            SharedConfig.passcodeHash.length() > 0 && (
+                SharedConfig.appLocked ||
+                SharedConfig.autoLockIn != 0 && SharedConfig.lastPauseTime != 0 && (SharedConfig.lastPauseTime + SharedConfig.autoLockIn) <= uptime ||
+                uptime + 5 < SharedConfig.lastPauseTime
+            )
+        );
+    }
+
+    private void loadChildrenImpl(String parentMediaId, Result<List<MediaBrowser.MediaItem>> result) {
         List<MediaBrowser.MediaItem> mediaItems = new ArrayList<>();
 
         if (MEDIA_ID_ROOT.equals(parentMediaId)) {
             for (int a = 0; a < dialogs.size(); a++) {
-                int did = dialogs.get(a);
-                MediaDescription.Builder builder = new MediaDescription.Builder().setMediaId("__CHAT_" + did);
+                long dialogId = dialogs.get(a);
+                MediaDescription.Builder builder = new MediaDescription.Builder().setMediaId("__CHAT_" + dialogId);
                 TLRPC.FileLocation avatar = null;
-                if (did > 0) {
-                    TLRPC.User user = users.get(did);
+                if (DialogObject.isUserDialog(dialogId)) {
+                    TLRPC.User user = users.get(dialogId);
                     if (user != null) {
                         builder.setTitle(ContactsController.formatName(user.first_name, user.last_name));
                         if (user.photo != null && !(user.photo.photo_small instanceof TLRPC.TL_fileLocationUnavailable)) {
@@ -284,7 +313,7 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
                         builder.setTitle("DELETED USER");
                     }
                 } else {
-                    TLRPC.Chat chat = chats.get(-did);
+                    TLRPC.Chat chat = chats.get(-dialogId);
                     if (chat != null) {
                         builder.setTitle(chat.title);
                         if (chat.photo != null && !(chat.photo.photo_small instanceof TLRPC.TL_fileLocationUnavailable)) {
@@ -296,7 +325,7 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
                 }
                 Bitmap bitmap = null;
                 if (avatar != null) {
-                    bitmap = createRoundBitmap(FileLoader.getPathToAttach(avatar, true));
+                    bitmap = createRoundBitmap(FileLoader.getInstance(currentAccount).getPathToAttach(avatar, true));
                     if (bitmap != null) {
                         builder.setIconBitmap(bitmap);
                     }
@@ -384,7 +413,7 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
                 return;
             }
             try {
-                int did = Integer.parseInt(args[0]);
+                long did = Long.parseLong(args[0]);
                 int id = Integer.parseInt(args[1]);
                 ArrayList<MessageObject> arrayList = musicObjects.get(did);
                 ArrayList<MediaSession.QueueItem> arrayList1 = musicQueues.get(did);
@@ -392,8 +421,9 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
                     return;
                 }
                 lastSelectedDialog = did;
-                MessagesController.getNotificationsSettings(currentAccount).edit().putInt("auto_lastSelectedDialog", did).commit();
+                MessagesController.getNotificationsSettings(currentAccount).edit().putLong("auto_lastSelectedDialog", did).commit();
                 MediaController.getInstance().setPlaylist(arrayList, arrayList.get(id), 0, false, null);
+                createMediaSession();
                 mediaSession.setQueue(arrayList1);
                 if (did > 0) {
                     TLRPC.User user = users.get(did);
@@ -443,8 +473,8 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
             }
             query = query.toLowerCase();
             for (int a = 0; a < dialogs.size(); a++) {
-                int did = dialogs.get(a);
-                if (did > 0) {
+                long did = dialogs.get(a);
+                if (DialogObject.isUserDialog(did)) {
                     TLRPC.User user = users.get(did);
                     if (user == null) {
                         continue;
@@ -496,8 +526,9 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
         } else {
             stateBuilder.setActiveQueueItemId(0);
         }
-
-        mediaSession.setPlaybackState(stateBuilder.build());
+        if (mediaSession != null) {
+            mediaSession.setPlaybackState(stateBuilder.build());
+        }
     }
 
     private long getAvailableActions() {
@@ -535,7 +566,8 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
             serviceStarted = true;
         }
 
-        if (!mediaSession.isActive()) {
+        if (mediaSession == null || !mediaSession.isActive()) {
+            createMediaSession();
             mediaSession.setActive(true);
         }
 
@@ -544,7 +576,7 @@ public class MusicBrowserService extends MediaBrowserService implements Notifica
             return;
         }
         MediaMetadata.Builder builder = new MediaMetadata.Builder();
-        builder.putLong(MediaMetadata.METADATA_KEY_DURATION, messageObject.getDuration() * 1000);
+        builder.putLong(MediaMetadata.METADATA_KEY_DURATION, (long) (messageObject.getDuration() * 1000));
         builder.putString(MediaMetadata.METADATA_KEY_ARTIST, messageObject.getMusicAuthor());
         builder.putString(MediaMetadata.METADATA_KEY_TITLE, messageObject.getMusicTitle());
         AudioInfo audioInfo = MediaController.getInstance().getAudioInfo();

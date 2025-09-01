@@ -29,49 +29,53 @@ public class SearchField extends FrameLayout {
     private ImageView clearSearchImageView;
     private CloseProgressDrawable2 progressDrawable;
     private EditTextBoldCursor searchEditText;
-    private View backgroundView;
+    private final Theme.ResourcesProvider resourcesProvider;
 
-    public SearchField(Context context) {
-        this(context, false);
+    public SearchField(Context context, boolean supportRtl, Theme.ResourcesProvider resourcesProvider) {
+        this(context, supportRtl, 14, resourcesProvider);
     }
-
-    public SearchField(Context context, boolean supportRtl) {
+    public SearchField(Context context, boolean supportRtl, float horizontalMargin, Theme.ResourcesProvider resourcesProvider) {
         super(context);
+        this.resourcesProvider = resourcesProvider;
 
         FrameLayout.LayoutParams lp;
 
         searchBackground = new View(context);
-        searchBackground.setBackgroundDrawable(Theme.createRoundRectDrawable(AndroidUtilities.dp(18), Theme.getColor(Theme.key_dialogSearchBackground)));
+        searchBackground.setBackgroundDrawable(Theme.createRoundRectDrawable(AndroidUtilities.dp(18), getThemedColor(Theme.key_dialogSearchBackground)));
         if (supportRtl) {
-            lp = LayoutHelper.createFrameRelatively(LayoutHelper.MATCH_PARENT, 36, Gravity.START | Gravity.TOP, 14, 11, 14, 0);
+            lp = LayoutHelper.createFrameRelatively(LayoutHelper.MATCH_PARENT, 36, Gravity.START | Gravity.TOP, horizontalMargin, 11, horizontalMargin, 0);
         } else {
-            lp = LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 36, Gravity.LEFT | Gravity.TOP, 14, 11, 14, 0);
+            lp = LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 36, Gravity.LEFT | Gravity.TOP, horizontalMargin, 11, horizontalMargin, 0);
         }
         addView(searchBackground, lp);
 
         searchIconImageView = new ImageView(context);
         searchIconImageView.setScaleType(ImageView.ScaleType.CENTER);
         searchIconImageView.setImageResource(R.drawable.smiles_inputsearch);
-        searchIconImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogSearchIcon), PorterDuff.Mode.MULTIPLY));
+        searchIconImageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_dialogSearchIcon), PorterDuff.Mode.MULTIPLY));
         if (supportRtl) {
-            lp = LayoutHelper.createFrameRelatively(36, 36, Gravity.START | Gravity.TOP, 16, 11, 0, 0);
+            lp = LayoutHelper.createFrameRelatively(36, 36, Gravity.START | Gravity.TOP, horizontalMargin + 2, 11, 0, 0);
         } else {
-            lp = LayoutHelper.createFrame(36, 36, Gravity.LEFT | Gravity.TOP, 16, 11, 0, 0);
+            lp = LayoutHelper.createFrame(36, 36, Gravity.LEFT | Gravity.TOP, horizontalMargin + 2, 11, 0, 0);
         }
         addView(searchIconImageView, lp);
 
         clearSearchImageView = new ImageView(context);
         clearSearchImageView.setScaleType(ImageView.ScaleType.CENTER);
-        clearSearchImageView.setImageDrawable(progressDrawable = new CloseProgressDrawable2());
+        clearSearchImageView.setImageDrawable(progressDrawable = new CloseProgressDrawable2() {
+            @Override
+            protected int getCurrentColor() {
+                return getThemedColor(Theme.key_dialogSearchIcon);
+            }
+        });
         progressDrawable.setSide(AndroidUtilities.dp(7));
         clearSearchImageView.setScaleX(0.1f);
         clearSearchImageView.setScaleY(0.1f);
         clearSearchImageView.setAlpha(0.0f);
-        clearSearchImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogSearchIcon), PorterDuff.Mode.MULTIPLY));
         if (supportRtl) {
-            lp = LayoutHelper.createFrameRelatively(36, 36, Gravity.END | Gravity.TOP, 14, 11, 14, 0);
+            lp = LayoutHelper.createFrameRelatively(36, 36, Gravity.END | Gravity.TOP, horizontalMargin, 11, horizontalMargin, 0);
         } else {
-            lp = LayoutHelper.createFrame(36, 36, Gravity.RIGHT | Gravity.TOP, 14, 11, 14, 0);
+            lp = LayoutHelper.createFrame(36, 36, Gravity.RIGHT | Gravity.TOP, horizontalMargin, 11, horizontalMargin, 0);
         }
         addView(clearSearchImageView, lp);
         clearSearchImageView.setOnClickListener(v -> {
@@ -98,8 +102,8 @@ public class SearchField extends FrameLayout {
             }
         };
         searchEditText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-        searchEditText.setHintTextColor(Theme.getColor(Theme.key_dialogSearchHint));
-        searchEditText.setTextColor(Theme.getColor(Theme.key_dialogSearchText));
+        searchEditText.setHintTextColor(getThemedColor(Theme.key_dialogSearchHint));
+        searchEditText.setTextColor(getThemedColor(Theme.key_dialogSearchText));
         searchEditText.setBackgroundDrawable(null);
         searchEditText.setPadding(0, 0, 0, 0);
         searchEditText.setMaxLines(1);
@@ -107,13 +111,13 @@ public class SearchField extends FrameLayout {
         searchEditText.setSingleLine(true);
         searchEditText.setGravity((supportRtl ? LayoutHelper.getAbsoluteGravityStart() : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
         searchEditText.setImeOptions(EditorInfo.IME_ACTION_SEARCH | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
-        searchEditText.setCursorColor(Theme.getColor(Theme.key_featuredStickers_addedIcon));
+        searchEditText.setCursorColor(getThemedColor(Theme.key_featuredStickers_addedIcon));
         searchEditText.setCursorSize(AndroidUtilities.dp(20));
         searchEditText.setCursorWidth(1.5f);
         if (supportRtl) {
-            lp = LayoutHelper.createFrameRelatively(LayoutHelper.MATCH_PARENT, 40, Gravity.START | Gravity.TOP, 16 + 38, 9, 16 + 30, 0);
+            lp = LayoutHelper.createFrameRelatively(LayoutHelper.MATCH_PARENT, 40, Gravity.START | Gravity.TOP, horizontalMargin + 2 + 38, 9, horizontalMargin + 2 + 30, 0);
         } else {
-            lp = LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 40, Gravity.LEFT | Gravity.TOP, 16 + 38, 9, 16 + 30, 0);
+            lp = LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 40, Gravity.LEFT | Gravity.TOP, horizontalMargin + 2 + 38, 9, horizontalMargin + 2 + 30, 0);
         }
         addView(searchEditText, lp);
         searchEditText.addTextChangedListener(new TextWatcher() {
@@ -195,5 +199,9 @@ public class SearchField extends FrameLayout {
         descriptions.add(new ThemeDescription(searchEditText, ThemeDescription.FLAG_TEXTCOLOR, null, null, null, null, Theme.key_dialogSearchText));
         descriptions.add(new ThemeDescription(searchEditText, ThemeDescription.FLAG_HINTTEXTCOLOR, null, null, null, null, Theme.key_dialogSearchHint));
         descriptions.add(new ThemeDescription(searchEditText, ThemeDescription.FLAG_CURSORCOLOR, null, null, null, null, Theme.key_featuredStickers_addedIcon));
+    }
+
+    private int getThemedColor(int key) {
+        return Theme.getColor(key, resourcesProvider);
     }
 }

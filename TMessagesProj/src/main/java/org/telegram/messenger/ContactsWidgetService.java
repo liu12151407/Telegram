@@ -14,10 +14,13 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.Bundle;
-import android.util.LongSparseArray;
 import android.view.View;
 import android.widget.RemoteViews;
 import android.widget.RemoteViewsService;
+
+import androidx.collection.LongSparseArray;
+
+import com.google.android.exoplayer2.util.Log;
 
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
@@ -76,11 +79,11 @@ class ContactsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactor
     public RemoteViews getViewAt(int position) {
         if (deleted) {
             RemoteViews rv = new RemoteViews(mContext.getPackageName(), R.layout.widget_deleted);
-            rv.setTextViewText(R.id.widget_deleted_text, LocaleController.getString("WidgetLoggedOff", R.string.WidgetLoggedOff));
+            rv.setTextViewText(R.id.widget_deleted_text, LocaleController.getString(R.string.WidgetLoggedOff));
             return rv;
         } else if (position >= getCount() - 1) {
             RemoteViews rv = new RemoteViews(mContext.getPackageName(), R.layout.widget_edititem);
-            rv.setTextViewText(R.id.widget_edititem_text, LocaleController.getString("TapToEditWidgetShort", R.string.TapToEditWidgetShort));
+            rv.setTextViewText(R.id.widget_edititem_text, LocaleController.getString(R.string.TapToEditWidgetShort));
             Bundle extras = new Bundle();
             extras.putInt("appWidgetId", appWidgetId);
             extras.putInt("appWidgetType", EditWidgetActivity.TYPE_CONTACTS);
@@ -104,14 +107,14 @@ class ContactsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactor
                 TLRPC.FileLocation photoPath = null;
                 TLRPC.User user = null;
                 TLRPC.Chat chat = null;
-                if (id > 0) {
-                    user = accountInstance.getMessagesController().getUser((int) (long) id);
+                if (DialogObject.isUserDialog(id)) {
+                    user = accountInstance.getMessagesController().getUser(id);
                     if (UserObject.isUserSelf(user)) {
-                        name = LocaleController.getString("SavedMessages", R.string.SavedMessages);
+                        name = LocaleController.getString(R.string.SavedMessages);
                     } else if (UserObject.isReplyUser(user)) {
-                        name = LocaleController.getString("RepliesTitle", R.string.RepliesTitle);
+                        name = LocaleController.getString(R.string.RepliesTitle);
                     } else if (UserObject.isDeleted(user)) {
-                        name = LocaleController.getString("HiddenName", R.string.HiddenName);
+                        name = LocaleController.getString(R.string.HiddenName);
                     } else {
                         name = UserObject.getFirstName(user);
                     }
@@ -119,7 +122,7 @@ class ContactsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactor
                         photoPath = user.photo.photo_small;
                     }
                 } else {
-                    chat = accountInstance.getMessagesController().getChat(-(int) (long) id);
+                    chat = accountInstance.getMessagesController().getChat(-id);
                     if (chat != null) {
                         name = chat.title;
                         if (chat.photo != null && chat.photo.photo_small != null && chat.photo.photo_small.volume_id != 0 && chat.photo.photo_small.local_id != 0) {
@@ -134,7 +137,7 @@ class ContactsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactor
                 try {
                     Bitmap bitmap = null;
                     if (photoPath != null) {
-                        File path = FileLoader.getPathToAttach(photoPath, true);
+                        File path = FileLoader.getInstance(UserConfig.selectedAccount).getPathToAttach(photoPath, true);
                         bitmap = BitmapFactory.decodeFile(path.toString());
                     }
 
@@ -152,7 +155,8 @@ class ContactsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactor
                                 avatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_SAVED);
                             }
                         } else {
-                            avatarDrawable = new AvatarDrawable(chat);
+                            avatarDrawable = new AvatarDrawable();
+                            avatarDrawable.setInfo(accountInstance.getCurrentAccount(), chat);
                         }
                         avatarDrawable.setBounds(0, 0, size, size);
                         avatarDrawable.draw(canvas);
@@ -193,10 +197,10 @@ class ContactsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactor
 
                 Bundle extras = new Bundle();
 
-                if (id > 0) {
-                    extras.putInt("userId", (int) (long) id);
+                if (DialogObject.isUserDialog(id)) {
+                    extras.putLong("userId", id);
                 } else {
-                    extras.putInt("chatId", -(int) (long) id);
+                    extras.putLong("chatId", -id);
                 }
                 extras.putInt("currentAccount", accountInstance.getCurrentAccount());
 
